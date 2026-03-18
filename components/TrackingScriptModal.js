@@ -5,8 +5,8 @@ import { useState } from "react";
 export default function TrackingScriptModal({ webinar, onClose }) {
   const [copied, setCopied] = useState(false);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
+  const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
 
   const script = `<!-- WebinarPulse Tracking — ${webinar.name} -->
 <script src="https://player.vimeo.com/api/player.js"><\/script>

@@ -9,8 +9,8 @@ export async function GET(request) {
     return NextResponse.json({ error: "webinar_id required" }, { status: 400 });
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
+  const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
 
   const script = `<!-- WebinarPulse Tracking — ${webinarName} -->
 <script src="https://player.vimeo.com/api/player.js"><\/script>
