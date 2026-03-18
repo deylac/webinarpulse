@@ -25,12 +25,8 @@ export default function Home() {
 
       if (error) throw error;
 
-      if (data && data.length > 0) {
-        setWebinars(data);
-      } else {
-        setDemoMode(true);
-        setWebinars(DEMO_WEBINARS);
-      }
+      // Connected to Supabase — show real data (even if empty)
+      setWebinars(data || []);
     } catch {
       setDemoMode(true);
       setWebinars(DEMO_WEBINARS);
