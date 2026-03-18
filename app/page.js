@@ -54,6 +54,28 @@ export default function Home() {
     }
   }
 
+  async function deleteWebinar(webinarId) {
+    if (demoMode) {
+      setWebinars((prev) => prev.filter((w) => w.id !== webinarId));
+      return;
+    }
+    // Delete cascade: events → sessions → webinar
+    const { data: sessions } = await supabase
+      .from("viewing_sessions")
+      .select("id")
+      .eq("webinar_id", webinarId);
+    if (sessions?.length) {
+      const sessionIds = sessions.map((s) => s.id);
+      await supabase.from("viewing_events").delete().in("session_id", sessionIds);
+      await supabase.from("viewing_sessions").delete().eq("webinar_id", webinarId);
+    }
+    const { error } = await supabase.from("webinars").delete().eq("id", webinarId);
+    if (!error) {
+      setWebinars((prev) => prev.filter((w) => w.id !== webinarId));
+      if (selectedWebinar?.id === webinarId) setSelectedWebinar(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -79,6 +101,7 @@ export default function Home() {
       demoMode={demoMode}
       onSelect={setSelectedWebinar}
       onAdd={addWebinar}
+      onDelete={deleteWebinar}
     />
   );
 }
