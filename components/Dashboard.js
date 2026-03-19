@@ -10,6 +10,7 @@ import TranscriptTab from "./TranscriptTab";
 import DiagnosticPanel from "./DiagnosticPanel";
 import TaggingTab from "./TaggingTab";
 import TrackingScriptModal from "./TrackingScriptModal";
+import SettingsModal from "./SettingsModal";
 import StatCard from "./StatCard";
 
 export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
@@ -18,6 +19,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
   const [tab, setTab] = useState("retention");
   const [dateRange, setDateRange] = useState("30d");
   const [showScript, setShowScript] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [chapters, setChapters] = useState([]);
 
   useEffect(() => {
@@ -246,7 +248,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
               )}
               {tab === "tags" && (
                 <div className="p-6">
-                  <TaggingTab webinar={webinar} />
+                  <TaggingTab webinar={webinar} onOpenSettings={() => setShowSettings(true)} />
                 </div>
               )}
             </div>
@@ -256,6 +258,9 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
 
       {showScript && (
         <TrackingScriptModal webinar={webinar} onClose={() => setShowScript(false)} />
+      )}
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
       )}
     </div>
   );

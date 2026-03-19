@@ -63,29 +63,11 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Get API key: first from DB (app_settings), fallback to env var
-  let SYSTEMEIO_API_KEY = process.env.SYSTEMEIO_API_KEY || "";
   try {
-    const { data: setting } = await supabase
-      .from("app_settings")
-      .select("value")
-      .eq("key", "systemeio_api_key")
-      .single();
-    if (setting?.value) SYSTEMEIO_API_KEY = setting.value;
-  } catch {}
-
-  if (!SYSTEMEIO_API_KEY) {
-    return NextResponse.json(
-      { error: "Clé API Systeme.io non configurée. Ajoutez-la dans l'onglet Tags du dashboard." },
-      { status: 500 }
-    );
-  }
-
-  try {
-    // 1. Get active tagging rules
+    // 1. Get active tagging rules with webinar account info
     const { data: rules, error: rulesErr } = await supabase
       .from("tagging_rules")
-      .select("*, webinar:webinars(slug)")
+      .select("*, webinar:webinars(slug, systemeio_account_id)")
       .eq("enabled", true);
 
     if (rulesErr || !rules?.length) {
@@ -95,7 +77,33 @@ export async function GET(request) {
       });
     }
 
-    // 2. Get untagged sessions (aggregated by viewer + webinar)
+    // 2. Collect unique account IDs from webinars that have rules
+    const accountIds = [...new Set(rules.map((r) => r.webinar?.systemeio_account_id).filter(Boolean))];
+
+    // Load accounts
+    let accountsMap = {};
+    if (accountIds.length) {
+      const { data: accounts } = await supabase
+        .from("systemeio_accounts")
+        .select("id, api_key")
+        .in("id", accountIds);
+      if (accounts) {
+        for (const acc of accounts) accountsMap[acc.id] = acc.api_key;
+      }
+    }
+
+    // Fallback: try app_settings or env var for webinars without a specific account
+    let fallbackKey = process.env.SYSTEMEIO_API_KEY || "";
+    try {
+      const { data: setting } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "systemeio_api_key")
+        .single();
+      if (setting?.value) fallbackKey = setting.value;
+    } catch {}
+
+    // 3. Get untagged sessions (aggregated by viewer + webinar)
     const { data: sessions, error: sessErr } = await supabase.rpc("get_untagged_sessions");
 
     if (sessErr) {
@@ -111,13 +119,21 @@ export async function GET(request) {
     let errors = 0;
     let skipped = 0;
 
-    // 3. Process each viewer/webinar pair
+    // 4. Process each viewer/webinar pair
     for (const session of sessions) {
       // Throttle: 300ms between API calls
       await new Promise((r) => setTimeout(r, 300));
 
       const webinarRules = rules.filter((r) => r.webinar_id === session.webinar_id);
       if (!webinarRules.length) {
+        skipped++;
+        continue;
+      }
+
+      // Resolve API key for this webinar's account
+      const accountId = webinarRules[0]?.webinar?.systemeio_account_id;
+      const apiKey = (accountId && accountsMap[accountId]) || fallbackKey;
+      if (!apiKey) {
         skipped++;
         continue;
       }
@@ -136,7 +152,7 @@ export async function GET(request) {
       }
 
       // Find contact in Systeme.io
-      const contact = await findContactByEmail(SYSTEMEIO_API_KEY, session.viewer_email);
+      const contact = await findContactByEmail(apiKey, session.viewer_email);
 
       if (!contact) {
         await supabase.from("tagging_log").insert({
@@ -157,14 +173,14 @@ export async function GET(request) {
       for (const old of otherSegments) {
         const hasTag = contact.tags?.some((t) => String(t.id) === String(old.systemeio_tag_id));
         if (hasTag) {
-          await removeTag(SYSTEMEIO_API_KEY, contact.id, old.systemeio_tag_id);
+          await removeTag(apiKey, contact.id, old.systemeio_tag_id);
           await new Promise((r) => setTimeout(r, 300));
         }
       }
 
       // Assign new tag
       if (segment.systemeio_tag_id) {
-        const success = await assignTag(SYSTEMEIO_API_KEY, contact.id, segment.systemeio_tag_id);
+        const success = await assignTag(apiKey, contact.id, segment.systemeio_tag_id);
 
         await supabase.from("tagging_log").insert({
           viewer_email: session.viewer_email,

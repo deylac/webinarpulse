@@ -10,17 +10,15 @@ const SEGMENTS = [
   { id: "completed", label: "Complété", color: "bg-emerald-500/20 text-emerald-400", emoji: "🟢", default_min: 80, default_max: 100 },
 ];
 
-export default function TaggingTab({ webinar }) {
+export default function TaggingTab({ webinar, onOpenSettings }) {
   const [rules, setRules] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccountId, setSelectedAccountId] = useState(webinar.systemeio_account_id || "");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [editing, setEditing] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [savingKey, setSavingKey] = useState(false);
-  const [showKey, setShowKey] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -29,7 +27,7 @@ export default function TaggingTab({ webinar }) {
   async function loadData() {
     setLoading(true);
     try {
-      const [rulesRes, logsRes, settingsRes] = await Promise.all([
+      const [rulesRes, logsRes, accountsRes] = await Promise.all([
         supabase
           .from("tagging_rules")
           .select("*")
@@ -42,16 +40,14 @@ export default function TaggingTab({ webinar }) {
           .order("processed_at", { ascending: false })
           .limit(20),
         supabase
-          .from("app_settings")
-          .select("value")
-          .eq("key", "systemeio_api_key")
-          .single(),
+          .from("systemeio_accounts")
+          .select("id, name")
+          .order("created_at", { ascending: true }),
       ]);
       setRules(rulesRes.data || []);
       setLogs(logsRes.data || []);
-      const storedKey = settingsRes.data?.value || "";
-      setApiKey(storedKey);
-      setApiKeyInput(storedKey);
+      setAccounts(accountsRes.data || []);
+      setSelectedAccountId(webinar.systemeio_account_id || "");
     } catch {
       // ok
     } finally {
@@ -59,15 +55,12 @@ export default function TaggingTab({ webinar }) {
     }
   }
 
-  async function saveApiKey() {
-    setSavingKey(true);
-    try {
-      await supabase
-        .from("app_settings")
-        .upsert({ key: "systemeio_api_key", value: apiKeyInput.trim(), updated_at: new Date().toISOString() }, { onConflict: "key" });
-      setApiKey(apiKeyInput.trim());
-    } catch {}
-    setSavingKey(false);
+  async function assignAccount(accountId) {
+    setSelectedAccountId(accountId);
+    await supabase
+      .from("webinars")
+      .update({ systemeio_account_id: accountId || null })
+      .eq("id", webinar.id);
   }
 
   async function createDefaultRules() {
@@ -99,7 +92,7 @@ export default function TaggingTab({ webinar }) {
       const res = await fetch("/api/sync-tags");
       const data = await res.json();
       setSyncResult(data);
-      loadData(); // Refresh logs
+      loadData();
     } catch (err) {
       setSyncResult({ error: err.message });
     } finally {
@@ -115,6 +108,8 @@ export default function TaggingTab({ webinar }) {
     );
   }
 
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-6">
@@ -126,7 +121,7 @@ export default function TaggingTab({ webinar }) {
         </div>
         <button
           onClick={triggerSync}
-          disabled={syncing || !rules.length}
+          disabled={syncing || !rules.length || !selectedAccountId}
           className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl border border-pulse-border bg-pulse-surface text-pulse-accent-light hover:bg-pulse-accent/10 hover:border-pulse-accent/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {syncing ? (
@@ -147,59 +142,56 @@ export default function TaggingTab({ webinar }) {
         </button>
       </div>
 
-      {/* Connexion Systeme.io */}
+      {/* Account selector */}
       <div className="mb-6 bg-pulse-surface border border-pulse-border rounded-xl p-5">
-        <div className="flex items-center gap-2.5 mb-3">
-          <div className={`w-2.5 h-2.5 rounded-full ${apiKey ? "bg-emerald-400 shadow-emerald-400/30 shadow-sm" : "bg-gray-600"}`} />
-          <h4 className="text-sm font-semibold text-white">
-            Connexion Systeme.io
-          </h4>
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${apiKey ? "bg-emerald-500/15 text-emerald-400" : "bg-gray-500/15 text-gray-500"}`}>
-            {apiKey ? "Connecté" : "Non connecté"}
-          </span>
-        </div>
-        <p className="text-xs text-gray-500 mb-3">
-          Entrez votre clé API Systeme.io pour permettre la synchronisation des tags.
-          Trouvez-la dans <span className="text-gray-400">Systeme.io → Profil → Paramètres → Public API keys</span>.
-        </p>
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <input
-              type={showKey ? "text" : "password"}
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder="Collez votre clé API Systeme.io ici..."
-              className="w-full bg-pulse-bg border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50 pr-10"
-            />
-            <button
-              onClick={() => setShowKey(!showKey)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-              title={showKey ? "Masquer" : "Afficher"}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {showKey ? (
-                  <>
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                    <line x1="1" y1="1" x2="23" y2="23" />
-                  </>
-                ) : (
-                  <>
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </>
-                )}
-              </svg>
-            </button>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-2.5 h-2.5 rounded-full ${selectedAccount ? "bg-emerald-400 shadow-emerald-400/30 shadow-sm" : "bg-gray-600"}`} />
+            <h4 className="text-sm font-semibold text-white">
+              Compte Systeme.io
+            </h4>
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${selectedAccount ? "bg-emerald-500/15 text-emerald-400" : "bg-gray-500/15 text-gray-500"}`}>
+              {selectedAccount ? selectedAccount.name : "Non attribué"}
+            </span>
           </div>
           <button
-            onClick={saveApiKey}
-            disabled={savingKey || apiKeyInput === apiKey}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-pulse-accent/20 text-pulse-accent-light hover:bg-pulse-accent/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            onClick={onOpenSettings}
+            className="text-xs text-gray-500 hover:text-pulse-accent-light transition-colors flex items-center gap-1.5"
           >
-            {savingKey ? "..." : "Enregistrer"}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            Gérer les comptes
           </button>
         </div>
+
+        {accounts.length === 0 ? (
+          <div className="text-center py-4">
+            <p className="text-sm text-gray-400 mb-3">
+              Aucun compte Systeme.io configuré.
+            </p>
+            <button
+              onClick={onOpenSettings}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-pulse-accent to-purple-500 text-white transition-all hover:shadow-lg hover:shadow-pulse-accent/20"
+            >
+              Ajouter un compte
+            </button>
+          </div>
+        ) : (
+          <select
+            value={selectedAccountId}
+            onChange={(e) => assignAccount(e.target.value)}
+            className="w-full bg-pulse-bg border border-pulse-border rounded-lg px-3 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-pulse-accent/50 cursor-pointer"
+          >
+            <option value="">— Sélectionner un compte —</option>
+            {accounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                {acc.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {syncResult && (
@@ -274,7 +266,7 @@ export default function TaggingTab({ webinar }) {
                     onClick={() => updateRule(rule.id, { enabled: !rule.enabled })}
                     className={`w-10 h-5 rounded-full transition-all relative ${rule.enabled ? "bg-pulse-accent" : "bg-gray-700"}`}
                   >
-                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${rule.enabled ? "left-5.5 right-0.5" : "left-0.5"}`}
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all`}
                       style={{ left: rule.enabled ? "calc(100% - 18px)" : "2px" }}
                     />
                   </button>
