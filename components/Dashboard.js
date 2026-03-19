@@ -8,6 +8,7 @@ import ViewerTable from "./ViewerTable";
 import DailyChart from "./DailyChart";
 import TranscriptTab from "./TranscriptTab";
 import DiagnosticPanel from "./DiagnosticPanel";
+import TaggingTab from "./TaggingTab";
 import TrackingScriptModal from "./TrackingScriptModal";
 import StatCard from "./StatCard";
 
@@ -94,6 +95,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
     { id: "viewers", label: "Viewers", icon: "👥" },
     { id: "daily", label: "Volume", icon: "📊" },
     { id: "transcript", label: "Transcript", icon: "📝" },
+    { id: "tags", label: "Tags", icon: "🏷️" },
   ];
 
   return (
@@ -240,6 +242,11 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
               {tab === "transcript" && (
                 <div className="p-6">
                   <TranscriptTab webinar={webinar} />
+                </div>
+              )}
+              {tab === "tags" && (
+                <div className="p-6">
+                  <TaggingTab webinar={webinar} />
                 </div>
               )}
             </div>

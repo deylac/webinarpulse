@@ -44,7 +44,17 @@ export default function ViewerTable({ sessions }) {
     { id: "started_at", label: "Date" },
     { id: "duration", label: "Durée" },
     { id: "percent", label: "Progression" },
+    { id: "tag", label: "Tag SIO" },
   ];
+
+  function tagBadge(s) {
+    const pct = s.max_video_percent || 0;
+    if (!s.tagged_at) return { label: "–", css: "text-gray-600" };
+    if (pct >= 80) return { label: "🟢 Complété", css: "text-emerald-400" };
+    if (pct >= 50) return { label: "🟡 Engagé", css: "text-yellow-400" };
+    if (pct >= 10) return { label: "🟠 Partiel", css: "text-orange-400" };
+    return { label: "🔴 Bounce", css: "text-red-400" };
+  }
 
   return (
     <div className="overflow-x-auto">
@@ -100,6 +110,11 @@ export default function ViewerTable({ sessions }) {
                       {pct}%
                     </span>
                   </div>
+                </td>
+                <td className="px-5 py-3">
+                  <span className={`text-[10px] font-semibold ${tagBadge(s).css}`}>
+                    {tagBadge(s).label}
+                  </span>
                 </td>
               </tr>
             );
