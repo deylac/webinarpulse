@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const SYSTEMEIO_API_URL = "https://api.systeme.io/api";
-const SYSTEMEIO_API_KEY = process.env.SYSTEMEIO_API_KEY;
 const CRON_SECRET = process.env.CRON_SECRET;
 
 const supabase = createClient(
@@ -13,11 +12,11 @@ const supabase = createClient(
 
 // --- Systeme.io API helpers ---
 
-async function systemeioFetch(path, options = {}) {
+async function systemeioFetch(apiKey, path, options = {}) {
   const res = await fetch(`${SYSTEMEIO_API_URL}${path}`, {
     ...options,
     headers: {
-      "X-API-Key": SYSTEMEIO_API_KEY,
+      "X-API-Key": apiKey,
       "Content-Type": "application/json",
       ...options.headers,
     },
@@ -27,29 +26,29 @@ async function systemeioFetch(path, options = {}) {
   if (res.status === 429) {
     const retryAfter = parseInt(res.headers.get("Retry-After") || "5");
     await new Promise((r) => setTimeout(r, retryAfter * 1000));
-    return systemeioFetch(path, options);
+    return systemeioFetch(apiKey, path, options);
   }
 
   return res;
 }
 
-async function findContactByEmail(email) {
-  const res = await systemeioFetch(`/contacts?email=${encodeURIComponent(email)}`);
+async function findContactByEmail(apiKey, email) {
+  const res = await systemeioFetch(apiKey, `/contacts?email=${encodeURIComponent(email)}`);
   if (!res.ok) return null;
   const data = await res.json();
   return data.items?.[0] || null;
 }
 
-async function assignTag(contactId, tagId) {
-  const res = await systemeioFetch(`/contacts/${contactId}/tags`, {
+async function assignTag(apiKey, contactId, tagId) {
+  const res = await systemeioFetch(apiKey, `/contacts/${contactId}/tags`, {
     method: "POST",
     body: JSON.stringify({ tagId: Number(tagId) }),
   });
   return res.ok;
 }
 
-async function removeTag(contactId, tagId) {
-  const res = await systemeioFetch(`/contacts/${contactId}/tags/${tagId}`, {
+async function removeTag(apiKey, contactId, tagId) {
+  const res = await systemeioFetch(apiKey, `/contacts/${contactId}/tags/${tagId}`, {
     method: "DELETE",
   });
   return res.ok;
@@ -64,9 +63,20 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Get API key: first from DB (app_settings), fallback to env var
+  let SYSTEMEIO_API_KEY = process.env.SYSTEMEIO_API_KEY || "";
+  try {
+    const { data: setting } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "systemeio_api_key")
+      .single();
+    if (setting?.value) SYSTEMEIO_API_KEY = setting.value;
+  } catch {}
+
   if (!SYSTEMEIO_API_KEY) {
     return NextResponse.json(
-      { error: "SYSTEMEIO_API_KEY non configurée. Ajoutez-la dans les variables Vercel." },
+      { error: "Clé API Systeme.io non configurée. Ajoutez-la dans l'onglet Tags du dashboard." },
       { status: 500 }
     );
   }
@@ -126,7 +136,7 @@ export async function GET(request) {
       }
 
       // Find contact in Systeme.io
-      const contact = await findContactByEmail(session.viewer_email);
+      const contact = await findContactByEmail(SYSTEMEIO_API_KEY, session.viewer_email);
 
       if (!contact) {
         await supabase.from("tagging_log").insert({
@@ -147,14 +157,14 @@ export async function GET(request) {
       for (const old of otherSegments) {
         const hasTag = contact.tags?.some((t) => String(t.id) === String(old.systemeio_tag_id));
         if (hasTag) {
-          await removeTag(contact.id, old.systemeio_tag_id);
+          await removeTag(SYSTEMEIO_API_KEY, contact.id, old.systemeio_tag_id);
           await new Promise((r) => setTimeout(r, 300));
         }
       }
 
       // Assign new tag
       if (segment.systemeio_tag_id) {
-        const success = await assignTag(contact.id, segment.systemeio_tag_id);
+        const success = await assignTag(SYSTEMEIO_API_KEY, contact.id, segment.systemeio_tag_id);
 
         await supabase.from("tagging_log").insert({
           viewer_email: session.viewer_email,
