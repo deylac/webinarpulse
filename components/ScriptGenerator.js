@@ -58,8 +58,14 @@ export default function ScriptGenerator({ webinar, onClose }) {
       slug: WEBINAR_SLUG,
       ts: Date.now()
     });
+
+    // Cookie with explicit domain for cross-subdomain sharing
+    var rootDomain = window.location.hostname.split(".").slice(-2).join(".");
     document.cookie = "wp_viewer=" + encodeURIComponent(data)
-      + "; path=/; max-age=86400; SameSite=Lax";
+      + "; path=/; max-age=86400; SameSite=Lax; domain=." + rootDomain;
+
+    // localStorage fallback (same origin only)
+    try { localStorage.setItem("wp_viewer", data); } catch(e) {}
 
     var _fetch = window.__wpOrigFetch || window.fetch;
     _fetch.call(window, SB_URL + "/rest/v1/pending_registrations", {
@@ -179,13 +185,32 @@ export default function ScriptGenerator({ webinar, onClose }) {
   }
 
   function getViewerEmail() {
+    // 1. Cookie (cross-subdomain)
     var cookie = getCookie("wp_viewer");
-    if (cookie && cookie.email) return cookie.email;
+    if (cookie && cookie.email) {
+      console.log("[WebinarPulse] Email trouvé (cookie):", cookie.email);
+      return cookie.email;
+    }
+    // 2. localStorage fallback (same origin)
+    try {
+      var ls = localStorage.getItem("wp_viewer");
+      if (ls) {
+        var lsData = JSON.parse(ls);
+        if (lsData && lsData.email) {
+          console.log("[WebinarPulse] Email trouvé (localStorage):", lsData.email);
+          return lsData.email;
+        }
+      }
+    } catch(e) {}
+    // 3. URL params fallback
     var params = new URLSearchParams(window.location.search);
-    return params.get("email")
+    var urlEmail = params.get("email")
       || params.get("contact_email")
       || params.get("e")
       || null;
+    if (urlEmail) console.log("[WebinarPulse] Email trouvé (URL):", urlEmail);
+    else console.log("[WebinarPulse] Aucun email trouvé — session anonyme");
+    return urlEmail;
   }
 
   function sb(path, method, body, extraHeaders) {
