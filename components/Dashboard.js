@@ -7,6 +7,7 @@ import RetentionChart from "./RetentionChart";
 import ViewerTable from "./ViewerTable";
 import DailyChart from "./DailyChart";
 import TranscriptTab from "./TranscriptTab";
+import DiagnosticPanel from "./DiagnosticPanel";
 import TrackingScriptModal from "./TrackingScriptModal";
 import StatCard from "./StatCard";
 
@@ -16,10 +17,26 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
   const [tab, setTab] = useState("retention");
   const [dateRange, setDateRange] = useState("30d");
   const [showScript, setShowScript] = useState(false);
+  const [chapters, setChapters] = useState([]);
 
   useEffect(() => {
     loadSessions();
+    loadChapters();
   }, [webinar, dateRange]);
+
+  async function loadChapters() {
+    if (demoMode) return;
+    try {
+      const { data } = await supabase
+        .from("webinar_chapters")
+        .select("*")
+        .eq("webinar_id", webinar.id)
+        .order("sort_order", { ascending: true });
+      setChapters(data || []);
+    } catch {
+      // no chapters yet
+    }
+  }
 
   async function loadSessions() {
     setLoading(true);
@@ -195,9 +212,18 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                     Courbe de rétention
                   </h3>
                   <p className="text-xs text-gray-500 mb-5 leading-relaxed">
-                    Pourcentage de viewers encore présents à chaque moment de la vidéo. La zone rouge indique le plus gros décrochage.
+                    Pourcentage de viewers encore présents à chaque moment de la vidéo.
+                    {chapters.length > 0 ? " Les bandes colorées représentent les chapitres du transcript." : " La zone rouge indique le plus gros décrochage."}
                   </p>
-                  <RetentionChart sessions={sessions} videoDuration={webinar.video_duration_seconds} />
+                  <RetentionChart sessions={sessions} videoDuration={webinar.video_duration_seconds} chapters={chapters} />
+                  {chapters.length > 0 && (
+                    <DiagnosticPanel
+                      chapters={chapters}
+                      retentionData={sessions}
+                      videoDuration={webinar.video_duration_seconds}
+                      webinarName={webinar.name}
+                    />
+                  )}
                 </div>
               )}
               {tab === "viewers" && (
