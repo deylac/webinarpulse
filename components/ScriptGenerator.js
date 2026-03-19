@@ -231,28 +231,49 @@ export default function ScriptGenerator({ webinar, onClose }) {
     var email = getViewerEmail();
     var anonId = "anon-" + Math.random().toString(36).substr(2, 12);
 
-    // Only send the relevant column to avoid ambiguity on unique constraint
-    var viewerData = email
-      ? { email: email }
-      : { anonymous_id: anonId };
-
-    sb("viewers", "POST", viewerData,
-      { "Prefer": "return=representation,resolution=merge-duplicates" }
-    )
-    .then(function(v) {
-      var vid = Array.isArray(v) ? v[0].id : v.id;
-      return sb("viewing_sessions", "POST", {
+    function createSession(viewerId) {
+      sb("viewing_sessions", "POST", {
         webinar_id: WEBINAR_ID,
-        viewer_id: vid,
+        viewer_id: viewerId,
         user_agent: navigator.userAgent,
         referrer: document.referrer || null
-      });
-    })
-    .then(function(s) {
-      sessionId = Array.isArray(s) ? s[0].id : s.id;
-      initPlayer();
-    })
-    .catch(function(e) { console.warn("WebinarPulse:", e); });
+      })
+      .then(function(s) {
+        sessionId = Array.isArray(s) ? s[0].id : s.id;
+        console.log("[WebinarPulse] Session créée:", sessionId);
+        initPlayer();
+      })
+      .catch(function(e) { console.warn("WebinarPulse session:", e); });
+    }
+
+    if (email) {
+      // Check if viewer already exists
+      sb("viewers?email=eq." + encodeURIComponent(email) + "&select=id")
+      .then(function(rows) {
+        if (rows && rows.length > 0) {
+          console.log("[WebinarPulse] Viewer existant:", rows[0].id);
+          createSession(rows[0].id);
+        } else {
+          // Create new viewer
+          sb("viewers", "POST", { email: email })
+          .then(function(v) {
+            var vid = Array.isArray(v) ? v[0].id : v.id;
+            console.log("[WebinarPulse] Nouveau viewer:", vid);
+            createSession(vid);
+          })
+          .catch(function(e) { console.warn("WebinarPulse viewer:", e); });
+        }
+      })
+      .catch(function(e) { console.warn("WebinarPulse lookup:", e); });
+    } else {
+      // Anonymous viewer — always create new
+      sb("viewers", "POST", { anonymous_id: anonId })
+      .then(function(v) {
+        var vid = Array.isArray(v) ? v[0].id : v.id;
+        createSession(vid);
+      })
+      .catch(function(e) { console.warn("WebinarPulse anon:", e); });
+    }
   }
 
   function sendEvent(type, sec, pct) {
