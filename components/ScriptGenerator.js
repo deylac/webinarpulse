@@ -43,31 +43,26 @@ export default function ScriptGenerator({ webinar, onClose }) {
   var SB_URL = "${SB_URL}";
   var SB_KEY = "${SB_KEY}";
   var WEBINAR_SLUG = "${webinar.slug || ""}";
+  var captured = false;
 
-  document.addEventListener("submit", function(e) {
-    var form = e.target;
-    var emailInput = form.querySelector('input[type="email"]')
-      || form.querySelector('input[name*="email"]');
-    if (!emailInput || !emailInput.value) return;
-
-    var email = emailInput.value.trim().toLowerCase();
+  function capture(email, firstName) {
+    if (captured) return;
+    email = (email || "").trim().toLowerCase();
     if (!email || email.indexOf("@") === -1) return;
-
-    var firstNameInput = form.querySelector(
-      'input[name*="first_name"], input[name*="prenom"], input[name*="fname"]'
-    );
-    var firstName = firstNameInput ? firstNameInput.value.trim() : null;
+    captured = true;
+    console.log("[WebinarPulse] Email capté:", email);
 
     var data = JSON.stringify({
       email: email,
-      firstName: firstName,
+      firstName: firstName || null,
       slug: WEBINAR_SLUG,
       ts: Date.now()
     });
     document.cookie = "wp_viewer=" + encodeURIComponent(data)
       + "; path=/; max-age=86400; SameSite=Lax";
 
-    fetch(SB_URL + "/rest/v1/pending_registrations", {
+    var _fetch = window.__wpOrigFetch || window.fetch;
+    _fetch.call(window, SB_URL + "/rest/v1/pending_registrations", {
       method: "POST",
       headers: {
         "apikey": SB_KEY,
@@ -78,11 +73,84 @@ export default function ScriptGenerator({ webinar, onClose }) {
       body: JSON.stringify({
         email: email,
         webinar_slug: WEBINAR_SLUG,
-        first_name: firstName,
+        first_name: firstName || null,
         source: "form_intercept"
       }),
       keepalive: true
     }).catch(function() {});
+  }
+
+  function findEmail() {
+    var inputs = document.querySelectorAll('input[type="email"], input[name*="email"]');
+    for (var i = 0; i < inputs.length; i++) {
+      var v = inputs[i].value.trim();
+      if (v && v.indexOf("@") !== -1) return v;
+    }
+    return null;
+  }
+
+  function findFirstName() {
+    var input = document.querySelector(
+      'input[name*="first_name"], input[name*="prenom"], input[name*="fname"], input[name*="name"]:not([name*="last"]):not([name*="email"])'
+    );
+    return input ? input.value.trim() : null;
+  }
+
+  // Strategy 1: Click on buttons (works with React/SPA forms)
+  document.addEventListener("click", function(e) {
+    var btn = e.target.closest('button, [type="submit"], [role="button"], a.btn, .btn');
+    if (!btn) return;
+    var form = btn.closest("form");
+    if (!form) {
+      var email = findEmail();
+      if (email) capture(email, findFirstName());
+      return;
+    }
+    var emailInput = form.querySelector('input[type="email"]')
+      || form.querySelector('input[name*="email"]');
+    if (emailInput && emailInput.value) {
+      capture(emailInput.value, findFirstName());
+    }
+  }, true);
+
+  // Strategy 2: Intercept fetch to detect SIO API calls containing email
+  var origFetch = window.fetch;
+  window.__wpOrigFetch = origFetch;
+  window.fetch = function() {
+    var args = arguments;
+    if (args[1] && args[1].body && typeof args[1].body === "string") {
+      try {
+        var body = JSON.parse(args[1].body);
+        if (body.email && body.email.indexOf("@") !== -1) {
+          capture(body.email, body.first_name || body.firstName || null);
+        }
+      } catch(e) {}
+    }
+    return origFetch.apply(window, args);
+  };
+
+  // Strategy 3: Intercept XMLHttpRequest
+  var origXHR = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function(data) {
+    if (data && typeof data === "string") {
+      try {
+        var body = JSON.parse(data);
+        if (body.email && body.email.indexOf("@") !== -1) {
+          capture(body.email, body.first_name || body.firstName || null);
+        }
+      } catch(e) {}
+    }
+    return origXHR.apply(this, arguments);
+  };
+
+  // Strategy 4: Native submit (fallback)
+  document.addEventListener("submit", function(e) {
+    var form = e.target;
+    var emailInput = form.querySelector('input[type="email"]')
+      || form.querySelector('input[name*="email"]');
+    if (emailInput && emailInput.value) {
+      capture(emailInput.value, findFirstName());
+    }
   }, true);
 })();
 <` + `/script>`;
