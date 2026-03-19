@@ -6,6 +6,7 @@ import { formatDuration, generateDemoSessions } from "@/lib/utils";
 import RetentionChart from "./RetentionChart";
 import ViewerTable from "./ViewerTable";
 import DailyChart from "./DailyChart";
+import TranscriptTab from "./TranscriptTab";
 import TrackingScriptModal from "./TrackingScriptModal";
 import StatCard from "./StatCard";
 
@@ -75,6 +76,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
     { id: "retention", label: "Rétention", icon: "📉" },
     { id: "viewers", label: "Viewers", icon: "👥" },
     { id: "daily", label: "Volume", icon: "📊" },
+    { id: "transcript", label: "Transcript", icon: "📝" },
   ];
 
   return (
@@ -207,6 +209,11 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                     Volume journalier
                   </h3>
                   <DailyChart sessions={sessions} />
+                </div>
+              )}
+              {tab === "transcript" && (
+                <div className="p-6">
+                  <TranscriptTab webinar={webinar} />
                 </div>
               )}
             </div>
