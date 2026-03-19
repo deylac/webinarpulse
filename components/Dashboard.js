@@ -9,7 +9,7 @@ import DailyChart from "./DailyChart";
 import TranscriptTab from "./TranscriptTab";
 import DiagnosticPanel from "./DiagnosticPanel";
 import TaggingTab from "./TaggingTab";
-import TrackingScriptModal from "./TrackingScriptModal";
+import ScriptGenerator from "./ScriptGenerator";
 import SettingsModal from "./SettingsModal";
 import StatCard from "./StatCard";
 
@@ -257,7 +257,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
       </div>
 
       {showScript && (
-        <TrackingScriptModal webinar={webinar} onClose={() => setShowScript(false)} />
+        <ScriptGenerator webinar={webinar} onClose={() => setShowScript(false)} />
       )}
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
