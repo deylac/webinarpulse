@@ -231,16 +231,12 @@ export default function ScriptGenerator({ webinar, onClose }) {
     var email = getViewerEmail();
     var anonId = "anon-" + Math.random().toString(36).substr(2, 12);
 
-    var viewerData, viewerPath;
-    if (email) {
-      viewerData = { email: email, anonymous_id: null };
-      viewerPath = "viewers?on_conflict=email";
-    } else {
-      viewerData = { email: null, anonymous_id: anonId };
-      viewerPath = "viewers?on_conflict=anonymous_id";
-    }
+    // Only send the relevant column to avoid ambiguity on unique constraint
+    var viewerData = email
+      ? { email: email }
+      : { anonymous_id: anonId };
 
-    sb(viewerPath, "POST", viewerData,
+    sb("viewers", "POST", viewerData,
       { "Prefer": "return=representation,resolution=merge-duplicates" }
     )
     .then(function(v) {
