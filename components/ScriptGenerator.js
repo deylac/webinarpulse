@@ -231,11 +231,16 @@ export default function ScriptGenerator({ webinar, onClose }) {
     var email = getViewerEmail();
     var anonId = "anon-" + Math.random().toString(36).substr(2, 12);
 
-    var viewerData = email
-      ? { email: email, anonymous_id: null }
-      : { email: null, anonymous_id: anonId };
+    var viewerData, viewerPath;
+    if (email) {
+      viewerData = { email: email, anonymous_id: null };
+      viewerPath = "viewers?on_conflict=email";
+    } else {
+      viewerData = { email: null, anonymous_id: anonId };
+      viewerPath = "viewers?on_conflict=anonymous_id";
+    }
 
-    sb("viewers", "POST", viewerData,
+    sb(viewerPath, "POST", viewerData,
       { "Prefer": "return=representation,resolution=merge-duplicates" }
     )
     .then(function(v) {
