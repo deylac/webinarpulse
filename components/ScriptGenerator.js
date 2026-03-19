@@ -85,11 +85,11 @@ export default function ScriptGenerator({ webinar, onClose }) {
     }).catch(function() {});
   }, true);
 })();
-<\\/script>`;
+<` + `/script>`;
 
   // --- Script Tracking ---
   const trackingScript = `<!-- WebinarPulse — Tracking (page webinaire) -->
-<script src="https://player.vimeo.com/api/player.js"><\\/script>
+<script src="https://player.vimeo.com/api/player.js"><` + `/script>
 <script>
 (function() {
   var SB_URL = "${SB_URL}";
@@ -264,7 +264,7 @@ export default function ScriptGenerator({ webinar, onClose }) {
     document.addEventListener("DOMContentLoaded", initSession);
   else initSession();
 })();
-<\\/script>`;
+<` + `/script>`;
 
   function handleCopy(step, text) {
     navigator.clipboard.writeText(text).then(() => {
