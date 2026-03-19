@@ -5,12 +5,14 @@ import { supabase } from "@/lib/supabase";
 import { DEMO_WEBINARS, generateDemoSessions } from "@/lib/utils";
 import WebinarList from "@/components/WebinarList";
 import Dashboard from "@/components/Dashboard";
+import SettingsModal from "@/components/SettingsModal";
 
 export default function Home() {
   const [demoMode, setDemoMode] = useState(false);
   const [webinars, setWebinars] = useState([]);
   const [selectedWebinar, setSelectedWebinar] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     loadWebinars();
@@ -92,12 +94,18 @@ export default function Home() {
   }
 
   return (
-    <WebinarList
-      webinars={webinars}
-      demoMode={demoMode}
-      onSelect={setSelectedWebinar}
-      onAdd={addWebinar}
-      onDelete={deleteWebinar}
-    />
+    <>
+      <WebinarList
+        webinars={webinars}
+        demoMode={demoMode}
+        onSelect={setSelectedWebinar}
+        onAdd={addWebinar}
+        onDelete={deleteWebinar}
+        onOpenSettings={() => setShowSettings(true)}
+      />
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
+    </>
   );
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { formatDuration } from "@/lib/utils";
 import AddWebinarModal from "./AddWebinarModal";
 
-export default function WebinarList({ webinars, demoMode, onSelect, onAdd, onDelete }) {
+export default function WebinarList({ webinars, demoMode, onSelect, onAdd, onDelete, onOpenSettings }) {
   const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -28,22 +28,34 @@ export default function WebinarList({ webinars, demoMode, onSelect, onAdd, onDel
       <div className="max-w-3xl mx-auto px-5 py-12">
         {/* Header */}
         <div className="mb-10 animate-fade-in">
-          <div className="flex items-center gap-3.5 mb-3">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-pulse-accent to-purple-500 flex items-center justify-center shadow-lg shadow-pulse-accent/20">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="20" x2="12" y2="10" />
-                <line x1="18" y1="20" x2="18" y2="4" />
-                <line x1="6" y1="20" x2="6" y2="16" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3.5 mb-3">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-pulse-accent to-purple-500 flex items-center justify-center shadow-lg shadow-pulse-accent/20">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="20" x2="12" y2="10" />
+                  <line x1="18" y1="20" x2="18" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="16" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="font-display text-3xl font-bold tracking-tight text-white">
+                  WebinarPulse
+                </h1>
+                <p className="text-sm text-gray-500 font-body">
+                  Analytics pour webinaires evergreen
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-pulse-border bg-pulse-surface text-sm text-gray-400 hover:text-white hover:border-pulse-accent/40 hover:bg-pulse-accent/5 transition-all"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
-            </div>
-            <div>
-              <h1 className="font-display text-3xl font-bold tracking-tight text-white">
-                WebinarPulse
-              </h1>
-              <p className="text-sm text-gray-500 font-body">
-                Analytics pour webinaires evergreen
-              </p>
-            </div>
+              Paramètres
+            </button>
           </div>
         </div>
 
