@@ -418,9 +418,10 @@ webinarpulse/
 | Vercel inspect | https://vercel.com/brices-projects-6f753c5c/webinarpulse |
 | Repo GitHub | https://github.com/deylac/webinarpulse |
 | Projet Supabase | https://supabase.com/dashboard/project/nrdiphkwejcghgeemjjb |
-| Domaine Systeme.io | (à confirmer par l'utilisateur — pas visible dans le code) |
-| Page optin testée | 🔶 Non installé — script optin pas encore en place |
-| Page webinaire testée | Oui, ancien script tracking installé (sans identification cookie) |
+| Domaine personnalisé | `www.superproductif.fr` (Systeme.io avec custom domain) |
+| Page inscription (optin) | https://www.superproductif.fr/webi-auto-ia |
+| Page webinaire (live) | https://www.superproductif.fr/live-auto-ia |
+| Page webinaire (replay) | https://www.superproductif.fr/replay-webi-ia-auto-3939e145 |
 
 ---
 
@@ -430,11 +431,11 @@ webinarpulse/
 |---|---|---|
 | Ajout d'un webinaire dans le dashboard | ✅ | Avec sélecteur Systeme.io intégré |
 | Suppression d'un webinaire (avec cascade) | ✅ | Confirmation en 2 clics |
-| Script optin : email capté au submit | 🔶 Non testé | Script créé mais pas encore installé sur Systeme.io |
-| Cookie wp_viewer posé après inscription | 🔶 Non testé | Idem — nécessite test sur pages Systeme.io |
-| Cookie wp_viewer lu par le script tracking | 🔶 Non testé | Idem |
-| Session identifiée (email dans le dashboard) | 🔶 Non testé | Dépend de l'installation des 2 scripts |
-| Session anonyme (fallback sans cookie) | ✅ | Fonctionne en prod (18+ sessions existantes) |
+| Script optin : email capté au clic | ✅ | 4 stratégies (click, fetch, XHR, submit). 8+ emails captés en prod. |
+| Cookie wp_viewer posé après inscription | ✅ | Cookie `{email, firstName, slug, ts}` sur `.superproductif.fr`, 24h |
+| Cookie wp_viewer lu par le script tracking | ✅ | Vérifié : email lu et session identifiée |
+| Session identifiée (email dans le dashboard) | ✅ | `trophardybrice@gmail.com` visible dans Viewers (19 mars, 22:05) |
+| Session anonyme (fallback sans cookie) | ✅ | 34+ sessions anonymes existantes |
 | Événements Vimeo captés (play, pause, timeupdate) | ✅ | 153+ événements enregistrés |
 | Durée de visionnage mise à jour en temps réel | ✅ | Throttle 10s |
 | Pourcentage de vidéo vu correct | ✅ | `max_video_percent` correctement rempli |
@@ -459,14 +460,15 @@ webinarpulse/
 | Sync manuelle depuis onglet Tags | ✅ | Bouton "Synchroniser maintenant" |
 | Logs de tagging dans onglet Tags | ✅ | Affichage des derniers logs |
 | Mode démo (données simulées) | ✅ | Activé automatiquement si Supabase indisponible |
-| Pending_registrations reçoit les inscriptions | 🔶 Non testé | Table vide — script optin pas encore en place |
+| Pending_registrations reçoit les inscriptions | ✅ | 8+ inscriptions captées (backup) |
 | Responsive mobile du dashboard | ✅ | Grid responsive 2→4 colonnes |
 
 ### Navigateurs testés
 
 | Navigateur | Version | Résultat |
 |---|---|---|
-| Chrome desktop (macOS) | Via Vercel preview | ✅ OK — testé via browser agent |
+| Chrome desktop (macOS) | Chrome 145 | ✅ OK — dashboard + scripts testés |
+| Chrome (Systeme.io pages) | Chrome 145 | ✅ OK — optin + tracking + cookie |
 | Safari mobile | — | 🔶 Non testé |
 | Firefox | — | 🔶 Non testé |
 
@@ -506,22 +508,57 @@ webinarpulse/
 
 - [LIMITE] Pas de matching automatique entre pending_registrations et
   viewing_sessions anonymes. Le cookie est le seul mécanisme de liaison.
+- [RÉSOLU] Script optin ne fonctionnait pas avec Systeme.io (React, pas de <form>)
+  → Fix: 4 stratégies (click, fetch intercept, XHR intercept, submit fallback)
 
-- [FRAGILE] Les clés API Systeme.io sont stockées en clair dans systemeio_accounts.
-  Elles sont masquées dans l'UI mais lisibles via l'API Supabase anon
-  (RLS open). À verrouiller si l'app est distribuée.
+- [RÉSOLU] Cookie non partagé entre pages Systeme.io
+  → Fix: domain explicite (.superproductif.fr) + localStorage fallback
+
+- [LIMITE] Cookie wp_viewer expire après 24h. Les viewers qui reviennent après sont anonymes.
+
+- [LIMITE] Cookie ne fonctionne pas cross-device. Inscription mobile → visionnage desktop = anonyme.
+
+- [LIMITE] RLS policies ouvertes (anon all). Pas d'authentification sur le dashboard.
+  Acceptable pour usage interne, à verrouiller avant distribution.
+
+- [LIMITE] Vercel Hobby timeout 10s sur API routes. Cron sync-tags pourrait timeout
+  si gros volume de sessions.
+
+- [LIMITE] Pas de pagination API Supabase. Dashboard charge toutes les sessions.
+  OK jusqu'à ~5000, lent au-delà.
+
+- [FRAGILE] Retry iframe Vimeo: une seule tentative après 2s.
+
+- [LIMITE] Table `purchases` existe mais pas utilisée (futur webhook).
+
+- [FRAGILE] Clés API Systeme.io en clair dans systemeio_accounts, lisibles via API anon.
+
+- [OBSOLÈTE] API route /api/script sert l'ancien script sans cookie. Non utilisée par le frontend.
 ```
 
 ---
 
 ## 8. Données actuelles en base
 
-> **Note** : les requêtes ci-dessous doivent être exécutées directement dans le SQL Editor de Supabase. Les résultats ne sont pas disponibles depuis le frontend.
+**Données au 19 mars 2026, 22:10 (Paris)**
 
-### Requêtes à exécuter
+| Métrique | Valeur |
+|----------|--------|
+| Webinaires configurés | 4 |
+| Sessions totales (Replay Auto IA) | 34 |
+| Sessions identifiées | 1 (`trophardybrice@gmail.com`) |
+| Sessions anonymes | 33 |
+| Événements enregistrés | 153+ |
+| Pending registrations | 8 |
+| Comptes Systeme.io | 0 (à configurer) |
+| Durée moyenne de visionnage | 5m34s |
+| Progression moyenne | 8% |
+| Taux de complétion (>80%) | 3% |
+
+### Requêtes SQL de vérification
 
 ```sql
--- Sessions et taux d'identification
+-- Nombre de sessions et taux d'identification
 SELECT 
   COUNT(*) as total_sessions,
   COUNT(CASE WHEN v.email IS NOT NULL THEN 1 END) as identified,
