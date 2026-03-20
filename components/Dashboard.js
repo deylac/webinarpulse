@@ -139,6 +139,20 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
     return { total, avgDuration, avgPercent, identified, completionRate };
   }, [sessions]);
 
+  // Indice de fiabilité (0-100)
+  const reliabilityScore = useMemo(() => {
+    if (!sessions.length) return null;
+    // 1. Taux d'identification (70% du score)
+    const identRatio = stats.identified / stats.total;
+    const identScore = identRatio * 70;
+    // 2. Qualité des sessions — sessions avec durée > 30s (15% du score)
+    const qualitySessions = sessions.filter(s => (s.duration_seconds || 0) > 30).length;
+    const qualityScore = (qualitySessions / stats.total) * 15;
+    // 3. Volume de données — plus on a de sessions, plus c'est fiable (15% du score)
+    const volumeScore = Math.min(stats.total / 50, 1) * 15;
+    return Math.round(identScore + qualityScore + volumeScore);
+  }, [sessions, stats]);
+
   const tabs = [
     { id: "retention", label: "Rétention", icon: "📉" },
     { id: "viewers", label: "Viewers", icon: "👥" },
@@ -203,9 +217,9 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
           </div>
         </div>
 
-        {/* Last updated indicator */}
+        {/* Last updated + reliability indicator */}
         {lastUpdated && !loading && (
-          <div className="flex items-center gap-2 mb-4 animate-fade-in">
+          <div className="flex items-center gap-3 mb-4 animate-fade-in">
             <span className="text-[11px] text-gray-600">
               Mis à jour {timeAgo}
             </span>
@@ -220,6 +234,14 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
               </svg>
             </button>
+            {reliabilityScore !== null && (
+              <div className="flex items-center gap-1.5 ml-auto" title={`Indice de fiabilité des données : ${reliabilityScore}%\n\n• ${stats.identified}/${stats.total} sessions identifiées (${Math.round(stats.identified / stats.total * 100)}%)\n• ${sessions.filter(s => (s.duration_seconds || 0) > 30).length}/${stats.total} sessions de qualité\n\nCe score augmente avec le nombre de sessions identifiées, la qualité des données et le volume.`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${reliabilityScore >= 70 ? 'bg-emerald-400' : reliabilityScore >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} />
+                <span className={`text-[11px] font-medium ${reliabilityScore >= 70 ? 'text-emerald-400/80' : reliabilityScore >= 40 ? 'text-amber-400/80' : 'text-red-400/80'}`}>
+                  Fiabilité {reliabilityScore}%
+                </span>
+              </div>
+            )}
           </div>
         )}
 
