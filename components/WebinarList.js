@@ -5,7 +5,7 @@ import { formatDuration } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import AddWebinarModal from "./AddWebinarModal";
 
-export default function WebinarList({ webinars, demoMode, onSelect, onAdd, onDelete, onOpenSettings }) {
+export default function WebinarList({ webinars, demoMode, onSelect, onAdd, onDelete, onEdit, onOpenSettings }) {
   const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -233,6 +233,18 @@ export default function WebinarList({ webinars, demoMode, onSelect, onAdd, onDel
                       <polyline points="9 18 15 12 9 6" />
                     </svg>
                   </div>
+                </button>
+
+                {/* Edit button */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onEdit(w); }}
+                  className="absolute top-3.5 right-14 z-10 opacity-0 group-hover:opacity-100 rounded-lg px-2.5 py-1.5 text-xs font-medium bg-pulse-bg/80 border border-pulse-border text-gray-500 hover:text-pulse-accent-light hover:border-pulse-accent/30 hover:bg-pulse-accent/10 transition-all duration-200"
+                  title="Modifier ce webinaire"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
                 </button>
 
                 {/* Delete button */}

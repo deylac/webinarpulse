@@ -3,17 +3,20 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
-export default function AddWebinarModal({ onClose, onAdd }) {
-  const [name, setName] = useState("");
-  const [vimeoId, setVimeoId] = useState("");
-  const [duration, setDuration] = useState("");
-  const [slug, setSlug] = useState("");
+export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
+  const [name, setName] = useState(editWebinar?.name || "");
+  const [vimeoId, setVimeoId] = useState(editWebinar?.vimeo_video_id || "");
+  const [duration, setDuration] = useState(editWebinar?.video_duration_seconds ? String(Math.round(editWebinar.video_duration_seconds / 60)) : "");
+  const [slug, setSlug] = useState(editWebinar?.slug || "");
   const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
+  const [selectedAccount, setSelectedAccount] = useState(editWebinar?.systemeio_account_id || "");
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountKey, setNewAccountKey] = useState("");
   const [addingAccount, setAddingAccount] = useState(false);
+  const [ctaButtonId, setCtaButtonId] = useState(editWebinar?.cta_button_id || "");
+  const [viewerTagId, setViewerTagId] = useState(editWebinar?.systemeio_viewer_tag_id || "");
+  const [showAdvanced, setShowAdvanced] = useState(!!(editWebinar?.cta_button_id || editWebinar?.systemeio_viewer_tag_id));
 
   useEffect(() => {
     loadAccounts();
@@ -26,8 +29,7 @@ export default function AddWebinarModal({ onClose, onAdd }) {
       .order("created_at", { ascending: true });
     const list = data || [];
     setAccounts(list);
-    // Auto-select if only one account
-    if (list.length === 1) setSelectedAccount(list[0].id);
+    if (list.length === 1 && !selectedAccount) setSelectedAccount(list[0].id);
   }
 
   async function createAccount() {
@@ -50,13 +52,16 @@ export default function AddWebinarModal({ onClose, onAdd }) {
 
   function handleSubmit() {
     if (!name || !vimeoId || !slug) return;
-    onAdd({
+    const data = {
       name,
       vimeo_video_id: vimeoId,
       video_duration_seconds: parseInt(duration) * 60 || 0,
       slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
       systemeio_account_id: selectedAccount || null,
-    });
+      cta_button_id: ctaButtonId.trim() || null,
+      systemeio_viewer_tag_id: viewerTagId.trim() || null,
+    };
+    onAdd(data, editWebinar?.id);
   }
 
   const valid = name && vimeoId && slug;
@@ -71,7 +76,7 @@ export default function AddWebinarModal({ onClose, onAdd }) {
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="font-display text-lg font-bold text-white mb-6">
-          Ajouter un webinaire
+          {editWebinar ? "Modifier le webinaire" : "Ajouter un webinaire"}
         </h3>
 
         <div className="flex flex-col gap-4">
@@ -157,6 +162,48 @@ export default function AddWebinarModal({ onClose, onAdd }) {
               </div>
             )}
           </div>
+
+          {/* Advanced settings — collapsible */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-pulse-accent-light transition-colors"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`transition-transform ${showAdvanced ? "rotate-90" : ""}`}>
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+              Paramètres avancés
+            </button>
+            {showAdvanced && (
+              <div className="mt-3 space-y-3 bg-pulse-bg border border-pulse-border rounded-xl p-3.5">
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1 font-medium">
+                    ID du bouton CTA (pour tracker les clics vers la page de vente)
+                  </label>
+                  <input
+                    value={ctaButtonId}
+                    onChange={(e) => setCtaButtonId(e.target.value)}
+                    placeholder="button-db9df4e2"
+                    className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
+                  />
+                  <p className="text-[9px] text-gray-600 mt-1">Inspecter le bouton sur la page du webinaire → copier l'attribut ID</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1 font-medium">
+                    ID du tag Systeme.io « Webi vu » (pour identifier les viewers)
+                  </label>
+                  <input
+                    value={viewerTagId}
+                    onChange={(e) => setViewerTagId(e.target.value)}
+                    placeholder="1554529"
+                    className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
+                  />
+                  <p className="text-[9px] text-gray-600 mt-1">Systeme.io → Contacts → Tags → ID dans l'URL</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-3 mt-7">
@@ -171,7 +218,7 @@ export default function AddWebinarModal({ onClose, onAdd }) {
             disabled={!valid}
             className="flex-1 rounded-xl bg-pulse-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            Ajouter
+            {editWebinar ? "Enregistrer" : "Ajouter"}
           </button>
         </div>
       </div>

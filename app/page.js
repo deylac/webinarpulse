@@ -13,6 +13,7 @@ export default function Home() {
   const [selectedWebinar, setSelectedWebinar] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [editingWebinar, setEditingWebinar] = useState(null);
 
   useEffect(() => {
     loadWebinars();
@@ -37,18 +38,32 @@ export default function Home() {
     }
   }
 
-  async function addWebinar(webinarData) {
+  async function addWebinar(webinarData, editId) {
     if (demoMode) {
       setWebinars((prev) => [...prev, { ...webinarData, id: "w" + Date.now() }]);
       return;
     }
-    const { data, error } = await supabase
-      .from("webinars")
-      .insert(webinarData)
-      .select()
-      .single();
-    if (!error && data) {
-      setWebinars((prev) => [data, ...prev]);
+    if (editId) {
+      // Update existing webinar
+      const { data, error } = await supabase
+        .from("webinars")
+        .update(webinarData)
+        .eq("id", editId)
+        .select()
+        .single();
+      if (!error && data) {
+        setWebinars((prev) => prev.map(w => w.id === editId ? data : w));
+        if (selectedWebinar?.id === editId) setSelectedWebinar(data);
+      }
+    } else {
+      const { data, error } = await supabase
+        .from("webinars")
+        .insert(webinarData)
+        .select()
+        .single();
+      if (!error && data) {
+        setWebinars((prev) => [data, ...prev]);
+      }
     }
   }
 
@@ -114,10 +129,18 @@ export default function Home() {
         onSelect={setSelectedWebinar}
         onAdd={addWebinar}
         onDelete={deleteWebinar}
+        onEdit={(w) => setEditingWebinar(w)}
         onOpenSettings={() => setShowSettings(true)}
       />
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
+      {editingWebinar && (
+        <AddWebinarModal
+          editWebinar={editingWebinar}
+          onClose={() => setEditingWebinar(null)}
+          onAdd={(w, id) => { addWebinar(w, id); setEditingWebinar(null); }}
+        />
       )}
     </>
   );

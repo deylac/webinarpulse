@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -11,6 +12,14 @@ export async function GET(request) {
 
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
   const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
+
+  // Fetch webinar config for CTA button ID
+  let ctaButtonId = null;
+  try {
+    const supabase = createClient(supabaseUrl, (process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseKey).trim());
+    const { data: w } = await supabase.from('webinars').select('cta_button_id').eq('id', webinarId).single();
+    ctaButtonId = w?.cta_button_id || null;
+  } catch {}
 
   const script = `<!-- WebinarPulse Tracking — ${webinarName} -->
 <script src="https://player.vimeo.com/api/player.js"><\/script>
@@ -135,8 +144,8 @@ export async function GET(request) {
       );
     });
 
-    // CTA click tracking — capture le moment où le viewer clique vers la page de vente
-    var ctaBtn = document.getElementById("button-db9df4e2");
+    // CTA click tracking — dynamic per webinar
+    ${ctaButtonId ? `var ctaBtn = document.getElementById("${ctaButtonId}");
     if (ctaBtn) {
       ctaBtn.addEventListener("click", function() {
         player.getCurrentTime().then(function(sec) {
@@ -147,7 +156,7 @@ export async function GET(request) {
           });
         });
       });
-    }
+    }` : '// No CTA button configured for this webinar'}
   }
 
   function boot() { detectIp().then(initSession); }

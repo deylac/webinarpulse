@@ -170,30 +170,44 @@ async function runSystemeioViewerMatching(apiKey) {
   if (!apiKey) return { matched: 0, error: 'no_api_key' };
 
   try {
-    // Get the viewer tag ID from app_settings
+    // Collect all viewer tag IDs: per-webinar + global fallback
+    const tagIds = new Set();
+
+    // Per-webinar tags
+    const { data: webinarsWithTags } = await supabase
+      .from('webinars')
+      .select('id, systemeio_viewer_tag_id')
+      .not('systemeio_viewer_tag_id', 'is', null);
+
+    for (const w of (webinarsWithTags || [])) {
+      if (w.systemeio_viewer_tag_id) tagIds.add(w.systemeio_viewer_tag_id);
+    }
+
+    // Global fallback from app_settings
     const { data: setting } = await supabase
       .from('app_settings')
       .select('value')
       .eq('key', 'systemeio_viewer_tag_id')
       .single();
+    if (setting?.value) tagIds.add(setting.value);
 
-    const viewerTagId = setting?.value;
-    if (!viewerTagId) return { matched: 0, error: 'no_tag_id_configured' };
+    if (tagIds.size === 0) return { matched: 0, error: 'no_tag_id_configured' };
 
-    // Fetch contacts with this tag from Systeme.io
+    // Fetch contacts for all tag IDs from Systeme.io
     let allContacts = [];
-    let page = 1;
-    let hasMore = true;
-
-    while (hasMore && allContacts.length < 500) {
-      await new Promise(r => setTimeout(r, 300));
-      const result = await fetchContactsByTag(apiKey, viewerTagId, page);
-      allContacts = allContacts.concat(result.items);
-      hasMore = result.hasMore;
-      page = result.nextPage;
+    for (const tagId of tagIds) {
+      let page = 1;
+      let hasMore = true;
+      while (hasMore && allContacts.length < 500) {
+        await new Promise(r => setTimeout(r, 300));
+        const result = await fetchContactsByTag(apiKey, tagId, page);
+        allContacts = allContacts.concat(result.items);
+        hasMore = result.hasMore;
+        page = result.nextPage;
+      }
     }
 
-    if (allContacts.length === 0) return { matched: 0, contactsFetched: 0, tagId: viewerTagId };
+    if (allContacts.length === 0) return { matched: 0, contactsFetched: 0, tagIds: Array.from(tagIds) };
 
     // Get existing viewer emails
     const { data: existingViewers } = await supabase
@@ -238,7 +252,7 @@ async function runSystemeioViewerMatching(apiKey) {
       await new Promise(r => setTimeout(r, 100));
     }
 
-    return { matched: matchCount, contactsFetched: allContacts.length, alreadyKnown, newViewers, anonSessionsAvailable: (anonSessions || []).filter(s => s.viewer && !s.viewer.email).length, tagId: viewerTagId };
+    return { matched: matchCount, contactsFetched: allContacts.length, alreadyKnown, newViewers, anonSessionsAvailable: (anonSessions || []).filter(s => s.viewer && !s.viewer.email).length, tagIds: Array.from(tagIds) };
   } catch (e) {
     console.error('Systeme.io viewer matching error:', e);
     return { matched: 0, error: e.message };
