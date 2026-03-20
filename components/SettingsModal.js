@@ -116,6 +116,13 @@ export default function SettingsModal({ onClose }) {
     return key.slice(0, 8) + "•".repeat(12) + key.slice(-4);
   }
 
+  function generateSecret() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    let secret = "wp_";
+    for (let i = 0; i < 24; i++) secret += chars[Math.floor(Math.random() * chars.length)];
+    return secret;
+  }
+
   function handleCopy(field, text) {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedField(field);
@@ -297,6 +304,18 @@ export default function SettingsModal({ onClose }) {
                                 className="flex-1 bg-pulse-surface border border-pulse-border rounded-lg px-2.5 py-1.5 text-xs text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
                               />
                               <button
+                                type="button"
+                                onClick={() =>
+                                  setEditSecret((prev) => ({
+                                    ...prev,
+                                    [acc.id]: generateSecret(),
+                                  }))
+                                }
+                                className="text-[10px] px-2 py-1.5 rounded-lg bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white hover:border-pulse-accent/40 transition-all"
+                              >
+                                🎲
+                              </button>
+                              <button
                                 onClick={() => saveSecret(acc.id)}
                                 disabled={savingSecret === acc.id}
                                 className="text-[10px] px-2.5 py-1.5 rounded-lg bg-pulse-accent/20 text-pulse-accent-light hover:bg-pulse-accent/30 transition-colors disabled:opacity-40 font-medium"
@@ -430,6 +449,9 @@ export default function SettingsModal({ onClose }) {
                     placeholder="Nom du compte (ex: Mon agence)"
                     className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
                   />
+                  <p className="text-[10px] text-gray-500 mb-1">
+                    Systeme.io → Profil → Paramètres → Public API keys
+                  </p>
                   <input
                     value={newKey}
                     onChange={(e) => setNewKey(e.target.value)}
@@ -437,17 +459,23 @@ export default function SettingsModal({ onClose }) {
                     placeholder="Clé API Systeme.io"
                     className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
                   />
-                  <input
-                    value={newSecret}
-                    onChange={(e) => setNewSecret(e.target.value)}
-                    type="password"
-                    placeholder="Secret Webhook (optionnel)"
-                    className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
-                  />
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-gray-600">
-                      Systeme.io → Profil → Paramètres → Public API keys
-                    </p>
+                  <div className="flex gap-2">
+                    <input
+                      value={newSecret}
+                      onChange={(e) => setNewSecret(e.target.value)}
+                      type="text"
+                      placeholder="Secret Webhook"
+                      className="flex-1 bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setNewSecret(generateSecret())}
+                      className="px-3 py-2 text-xs font-medium rounded-lg bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white hover:border-pulse-accent/40 transition-all whitespace-nowrap"
+                    >
+                      🎲 Générer
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-end">
                     <button
                       onClick={addAccount}
                       disabled={!newName.trim() || !newKey.trim() || adding}
