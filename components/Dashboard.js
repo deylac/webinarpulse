@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatDuration, generateDemoSessions } from "@/lib/utils";
 import RetentionChart from "./RetentionChart";
@@ -23,11 +23,45 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
   const [showScript, setShowScript] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [chapters, setChapters] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [timeAgo, setTimeAgo] = useState("");
+  const lastLoadRef = useRef(0);
+  const COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
 
   useEffect(() => {
     loadSessions();
     loadChapters();
   }, [webinar, dateRange]);
+
+  // Auto-refresh when tab regains focus (with cooldown)
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        const elapsed = Date.now() - lastLoadRef.current;
+        if (elapsed > COOLDOWN_MS) {
+          loadSessions();
+          loadChapters();
+        }
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [webinar, dateRange]);
+
+  // Update relative time display every 30s
+  useEffect(() => {
+    function updateTimeAgo() {
+      if (!lastUpdated) return;
+      const diff = Math.round((Date.now() - lastUpdated) / 1000);
+      if (diff < 10) setTimeAgo("à l'instant");
+      else if (diff < 60) setTimeAgo(`il y a ${diff}s`);
+      else if (diff < 3600) setTimeAgo(`il y a ${Math.floor(diff / 60)} min`);
+      else setTimeAgo(`il y a ${Math.floor(diff / 3600)}h`);
+    }
+    updateTimeAgo();
+    const interval = setInterval(updateTimeAgo, 30000);
+    return () => clearInterval(interval);
+  }, [lastUpdated]);
 
   // Listen for tab navigation events from SetupChecklist
   useEffect(() => {
@@ -90,6 +124,8 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
       // fallback
     } finally {
       setLoading(false);
+      setLastUpdated(Date.now());
+      lastLoadRef.current = Date.now();
     }
   }
 
@@ -166,6 +202,26 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
             </button>
           </div>
         </div>
+
+        {/* Last updated indicator */}
+        {lastUpdated && !loading && (
+          <div className="flex items-center gap-2 mb-4 animate-fade-in">
+            <span className="text-[11px] text-gray-600">
+              Mis à jour {timeAgo}
+            </span>
+            <button
+              onClick={() => { loadSessions(); loadChapters(); }}
+              className="text-gray-600 hover:text-pulse-accent-light transition-colors p-1 rounded-lg hover:bg-pulse-accent/5"
+              title="Rafraîchir"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-500">
