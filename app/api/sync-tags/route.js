@@ -39,16 +39,14 @@ async function findContactByEmail(apiKey, email) {
   return data.items?.[0] || null;
 }
 
-async function fetchContactsByTag(apiKey, tagId, cursor = null) {
-  const params = new URLSearchParams({ limit: '100' });
-  if (cursor) params.set('after', cursor);
-  const res = await systemeioFetch(apiKey, `/contacts?tagId=${tagId}&${params}`);
+async function fetchContactsByTag(apiKey, tagId, page = 1) {
+  const res = await systemeioFetch(apiKey, `/contacts?tagId=${tagId}&limit=100&page=${page}`);
   if (!res.ok) return { items: [], hasMore: false };
   const data = await res.json();
   return {
     items: data.items || [],
-    hasMore: data.hasMore || false,
-    endCursor: data.endCursor || null
+    hasMore: (data.items || []).length >= 100,
+    nextPage: page + 1
   };
 }
 
@@ -169,7 +167,7 @@ async function runTagBasedMatching() {
 // Fetch contacts with a "viewer" tag from Systeme.io and cross-reference
 
 async function runSystemeioViewerMatching(apiKey) {
-  if (!apiKey) return 0;
+  if (!apiKey) return { matched: 0, error: 'no_api_key' };
 
   try {
     // Get the viewer tag ID from app_settings
@@ -180,22 +178,22 @@ async function runSystemeioViewerMatching(apiKey) {
       .single();
 
     const viewerTagId = setting?.value;
-    if (!viewerTagId) return 0;
+    if (!viewerTagId) return { matched: 0, error: 'no_tag_id_configured' };
 
     // Fetch contacts with this tag from Systeme.io
     let allContacts = [];
-    let cursor = null;
+    let page = 1;
     let hasMore = true;
 
-    while (hasMore && allContacts.length < 500) { // Cap à 500 pour sécurité
-      await new Promise(r => setTimeout(r, 300)); // Rate limit
-      const result = await fetchContactsByTag(apiKey, viewerTagId, cursor);
+    while (hasMore && allContacts.length < 500) {
+      await new Promise(r => setTimeout(r, 300));
+      const result = await fetchContactsByTag(apiKey, viewerTagId, page);
       allContacts = allContacts.concat(result.items);
       hasMore = result.hasMore;
-      cursor = result.endCursor;
+      page = result.nextPage;
     }
 
-    if (allContacts.length === 0) return 0;
+    if (allContacts.length === 0) return { matched: 0, contactsFetched: 0, tagId: viewerTagId };
 
     // Get existing viewer emails
     const { data: existingViewers } = await supabase
@@ -205,44 +203,45 @@ async function runSystemeioViewerMatching(apiKey) {
 
     const existingEmails = new Set((existingViewers || []).map(v => v.email?.toLowerCase()));
 
+    // Get all anonymous sessions
+    const { data: anonSessions } = await supabase
+      .from('viewing_sessions')
+      .select('id, viewer_id, started_at, viewer:viewers(id, email, anonymous_id)')
+      .order('started_at', { ascending: false });
+
+    // Filter to truly anonymous sessions
+    const sessions = (anonSessions || []).filter(s => s.viewer && !s.viewer.email);
+
     let matchCount = 0;
+    let newViewers = 0;
+    let alreadyKnown = 0;
 
     for (const contact of allContacts) {
       const email = contact.email?.trim()?.toLowerCase();
-      if (!email || existingEmails.has(email)) continue;
+      if (!email) continue;
+      if (existingEmails.has(email)) { alreadyKnown++; continue; }
 
-      // Ce contact est tagué "Webi vu" mais pas dans nos viewers
-      // Chercher une session anonyme qui pourrait être la sienne
-      const { data: anonSessions } = await supabase
-        .from('viewing_sessions')
-        .select('id, viewer_id, started_at, viewer:viewers(id, email)')
-        .is('viewer.email', null)
-        .order('started_at', { ascending: false })
-        .limit(50);
-
-      // Filtrer les sessions vraiment anonymes
-      const sessions = (anonSessions || []).filter(s => s.viewer && !s.viewer.email);
-
-      if (sessions.length > 0) {
-        // Prendre la session anonyme la plus récente (la plus probable)
-        const match = sessions[0];
+      // Find an anonymous session to assign
+      const matchIdx = sessions.findIndex(s => s.viewer && !s.viewer.email);
+      if (matchIdx >= 0) {
+        const match = sessions[matchIdx];
         await supabase.from('viewers').update({ email }).eq('id', match.viewer_id);
+        sessions.splice(matchIdx, 1); // Remove matched session
         existingEmails.add(email);
         matchCount++;
-        console.log(`Systeme.io tag match: ${email} → viewer ${match.viewer_id}`);
       } else {
-        // Pas de session anonyme → créer un viewer pour référence future
         await supabase.from('viewers').insert({ email, anonymous_id: null });
         existingEmails.add(email);
+        newViewers++;
       }
 
       await new Promise(r => setTimeout(r, 100));
     }
 
-    return matchCount;
+    return { matched: matchCount, contactsFetched: allContacts.length, alreadyKnown, newViewers, anonSessionsAvailable: (anonSessions || []).filter(s => s.viewer && !s.viewer.email).length, tagId: viewerTagId };
   } catch (e) {
     console.error('Systeme.io viewer matching error:', e);
-    return 0;
+    return { matched: 0, error: e.message };
   }
 }
 
@@ -414,10 +413,8 @@ export async function GET(request) {
     }
 
     return NextResponse.json({
-      processed,
-      errors,
-      skipped,
-      total: sessions.length,
+      matching: { batchRPC: matchCount, tagBased: tagMatchCount, systemeio: sioMatchCount },
+      tagging: { processed, errors, skipped, total: sessions.length },
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
