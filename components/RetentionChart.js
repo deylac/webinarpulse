@@ -232,11 +232,14 @@ export default function RetentionChart({ sessions, videoDuration, chapters = [] 
       </svg>
 
       {/* Tooltip */}
-      {hover !== null && points[hover] && (
+      {hover !== null && points[hover] && (() => {
+        const pctX = (points[hover].x / W) * 100;
+        const clampLeft = Math.max(12, Math.min(88, pctX));
+        return (
         <div
           className="absolute pointer-events-none z-10 bg-pulse-surface border border-pulse-border-hover rounded-xl px-3.5 py-2.5 shadow-xl"
           style={{
-            left: `${(points[hover].x / W) * 100}%`,
+            left: `${clampLeft}%`,
             top: `${(points[hover].y / H) * 100 - 14}%`,
             transform: "translate(-50%, -100%)",
             minWidth: 150,
@@ -255,7 +258,8 @@ export default function RetentionChart({ sessions, videoDuration, chapters = [] 
             return ch ? <div className="text-[10px] text-pulse-accent-light mt-1 font-medium">📝 {ch.title}</div> : null;
           })()}
         </div>
-      )}
+        );
+      })()}
 
       {/* Drop label (only without chapters) */}
       {dropIndex > 0 && !chapters.length && (
