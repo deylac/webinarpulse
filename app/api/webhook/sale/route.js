@@ -32,11 +32,21 @@ export async function POST(request) {
   }
 
   const eventType = payload?.event;
-  const email = payload?.contact?.email?.trim()?.toLowerCase();
-  const systemeioContactId = payload?.contact?.id?.toString() || null;
+  // Systeme.io payload structure varies — try multiple locations
+  const email = (
+    payload?.contact?.email ||
+    payload?.email ||
+    payload?.buyer?.email ||
+    payload?.customer?.email ||
+    payload?.sale?.buyer_email ||
+    payload?.data?.contact?.email ||
+    payload?.data?.email
+  )?.trim()?.toLowerCase();
+  const systemeioContactId = (payload?.contact?.id || payload?.data?.contact?.id)?.toString() || null;
 
   if (!email) {
-    await logWebhook(supabase, eventType, payload, ip, true, false, 'No email');
+    // Log full payload so we can see the structure
+    await logWebhook(supabase, eventType || 'SALE_UNKNOWN', payload, ip, signatureValid, false, 'No email found in any known field');
     return NextResponse.json({ error: 'No email' }, { status: 400 });
   }
 

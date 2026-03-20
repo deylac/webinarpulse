@@ -104,16 +104,17 @@ export default function SettingsModal({ onClose }) {
     try {
       const { data: logs } = await supabase
         .from("webhook_log")
-        .select("event_type, signature_valid, created_at")
+        .select("event_type, signature_valid, processed, created_at")
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(20);
 
       if (!logs || logs.length === 0) {
         setWebhookStatuses((prev) => ({ ...prev, [accountId]: "none" }));
-      } else if (logs.some((l) => l.signature_valid)) {
+      } else if (logs.some((l) => l.processed)) {
         setWebhookStatuses((prev) => ({ ...prev, [accountId]: "active" }));
       } else {
-        setWebhookStatuses((prev) => ({ ...prev, [accountId]: "invalid" }));
+        // Webhooks received but not processed — still shows they're connected
+        setWebhookStatuses((prev) => ({ ...prev, [accountId]: "received" }));
       }
     } catch {
       setWebhookStatuses((prev) => ({ ...prev, [accountId]: "none" }));
@@ -141,7 +142,7 @@ export default function SettingsModal({ onClose }) {
 
   const statusLabels = {
     none: { icon: "🔴", text: "Aucun webhook reçu", color: "text-red-400" },
-    invalid: { icon: "🟡", text: "Signatures invalides", color: "text-yellow-400" },
+    received: { icon: "🟡", text: "Webhooks reçus (en attente)", color: "text-yellow-400" },
     active: { icon: "🟢", text: "Webhooks actifs", color: "text-emerald-400" },
   };
 
