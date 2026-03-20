@@ -89,6 +89,9 @@ export default function SettingsModal({ onClose }) {
       )
     );
     setSavingSecret(null);
+    // Show saved confirmation
+    setCopiedField(`saved-${id}`);
+    setTimeout(() => setCopiedField(null), 2000);
   }
 
   async function checkWebhookStatus(accountId) {
@@ -339,9 +342,14 @@ export default function SettingsModal({ onClose }) {
                                 {savingSecret === acc.id ? "..." : "Sauver"}
                               </button>
                             </div>
+                            {copiedField === `saved-${acc.id}` && (
+                              <p className="text-[10px] text-emerald-400 mt-1">
+                                ✅ Secret sauvegardé
+                              </p>
+                            )}
                             <p className="text-[10px] text-gray-600 mt-1">
-                              Copiez ce secret et collez-le dans Systeme.io →
-                              Webhooks → champ "Secret key"
+                              Copiez ce secret et collez-le dans le champ
+                              « Secret » de chaque webhook dans Systeme.io
                             </p>
                           </div>
 
@@ -372,24 +380,28 @@ export default function SettingsModal({ onClose }) {
 
                           {/* Instructions */}
                           <div className="bg-pulse-surface border border-pulse-border rounded-lg p-3">
-                            <div className="text-[10px] text-gray-300 font-medium mb-1.5">
-                              Dans Systeme.io :
+                            <div className="text-[10px] text-gray-300 font-medium mb-2">
+                              Créer 2 webhooks dans Systeme.io :
                             </div>
-                            <ol className="space-y-0.5 list-decimal list-inside text-[10px] text-gray-500">
-                              <li>
-                                Photo de profil → Paramètres → Webhooks → Créer
-                              </li>
-                              <li>
-                                Webhook 1 : URL = Optin, Événement = Opt-In
-                              </li>
-                              <li>
-                                Webhook 2 : URL = Ventes, Événements = New sale
-                                + Sale cancelled
-                              </li>
-                              <li>
-                                Utiliser le même secret pour les deux webhooks
-                              </li>
-                            </ol>
+                            <div className="space-y-2.5">
+                              <div className="text-[10px] text-gray-400">
+                                <div className="text-gray-300 font-medium mb-0.5">Webhook 1 — Inscriptions</div>
+                                <div>• <span className="text-gray-500">Nom :</span> <span className="text-gray-300">WebinarPulse - Optin</span></div>
+                                <div>• <span className="text-gray-500">URL :</span> copier l'URL <span className="text-gray-300">Optin</span> ci-dessus</div>
+                                <div>• <span className="text-gray-500">Secret :</span> coller le secret ci-dessus</div>
+                                <div>• <span className="text-gray-500">Événement :</span> cocher <span className="text-white font-medium">« Opt-In »</span></div>
+                              </div>
+                              <div className="text-[10px] text-gray-400">
+                                <div className="text-gray-300 font-medium mb-0.5">Webhook 2 — Ventes</div>
+                                <div>• <span className="text-gray-500">Nom :</span> <span className="text-gray-300">WebinarPulse - Ventes</span></div>
+                                <div>• <span className="text-gray-500">URL :</span> copier l'URL <span className="text-gray-300">Ventes</span> ci-dessus</div>
+                                <div>• <span className="text-gray-500">Secret :</span> coller le même secret</div>
+                                <div>• <span className="text-gray-500">Événements :</span> cocher <span className="text-white font-medium">« Nouvelle vente »</span> et <span className="text-white font-medium">« Vente annulée »</span></div>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-gray-600 mt-2">
+                              Accès : Photo de profil → Paramètres → Webhooks → Créer
+                            </p>
                           </div>
 
                           {/* Webhook status + actions */}
@@ -454,54 +466,116 @@ export default function SettingsModal({ onClose }) {
               )}
 
               {/* Add new account */}
-              <div className="bg-pulse-bg border border-dashed border-pulse-border rounded-xl p-4">
-                <h3 className="text-xs font-semibold uppercase text-gray-500 tracking-wider mb-3">
-                  Ajouter un compte
-                </h3>
-                <div className="space-y-2.5">
-                  <input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Nom du compte (ex: Mon agence)"
-                    className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
-                  />
-                  <p className="text-[10px] text-gray-500 mb-1">
-                    Systeme.io → Profil → Paramètres → Public API keys
-                  </p>
-                  <input
-                    value={newKey}
-                    onChange={(e) => setNewKey(e.target.value)}
-                    type="password"
-                    placeholder="Clé API Systeme.io"
-                    className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
-                  />
-                  <div className="flex gap-2">
+              {accounts.length === 0 ? (
+                <div className="bg-pulse-bg border border-dashed border-pulse-border rounded-xl p-4">
+                  <h3 className="text-xs font-semibold uppercase text-gray-500 tracking-wider mb-3">
+                    Connecter un compte Systeme.io
+                  </h3>
+                  <div className="space-y-2.5">
                     <input
-                      value={newSecret}
-                      onChange={(e) => setNewSecret(e.target.value)}
-                      type="text"
-                      placeholder="Secret Webhook"
-                      className="flex-1 bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="Nom du compte (ex: Mon agence)"
+                      className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setNewSecret(generateSecret())}
-                      className="px-3 py-2 text-xs font-medium rounded-lg bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white hover:border-pulse-accent/40 transition-all whitespace-nowrap"
-                    >
-                      🎲 Générer
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-end">
-                    <button
-                      onClick={addAccount}
-                      disabled={!newName.trim() || !newKey.trim() || adding}
-                      className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-pulse-accent to-purple-500 text-white transition-all hover:shadow-lg hover:shadow-pulse-accent/20 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {adding ? "..." : "Ajouter"}
-                    </button>
+                    <p className="text-[10px] text-gray-500 mb-1">
+                      Systeme.io → Profil → Paramètres → Public API keys
+                    </p>
+                    <input
+                      value={newKey}
+                      onChange={(e) => setNewKey(e.target.value)}
+                      type="password"
+                      placeholder="Clé API Systeme.io"
+                      className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        value={newSecret}
+                        onChange={(e) => setNewSecret(e.target.value)}
+                        type="text"
+                        placeholder="Secret Webhook"
+                        className="flex-1 bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setNewSecret(generateSecret())}
+                        className="px-3 py-2 text-xs font-medium rounded-lg bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white hover:border-pulse-accent/40 transition-all whitespace-nowrap"
+                      >
+                        🎲 Générer
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-end">
+                      <button
+                        onClick={addAccount}
+                        disabled={!newName.trim() || !newKey.trim() || adding}
+                        className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-pulse-accent to-purple-500 text-white transition-all hover:shadow-lg hover:shadow-pulse-accent/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {adding ? "..." : "Ajouter"}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById('wp-add-account');
+                      if (el) el.classList.toggle('hidden');
+                    }}
+                    className="w-full text-center py-2.5 text-xs text-gray-500 hover:text-pulse-accent-light transition-colors"
+                  >
+                    + Connecter un autre compte Systeme.io
+                  </button>
+                  <div id="wp-add-account" className="hidden bg-pulse-bg border border-dashed border-pulse-border rounded-xl p-4">
+                    <h3 className="text-xs font-semibold uppercase text-gray-500 tracking-wider mb-3">
+                      Nouveau compte
+                    </h3>
+                    <div className="space-y-2.5">
+                      <input
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="Nom du compte (ex: Mon agence)"
+                        className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                      />
+                      <p className="text-[10px] text-gray-500 mb-1">
+                        Systeme.io → Profil → Paramètres → Public API keys
+                      </p>
+                      <input
+                        value={newKey}
+                        onChange={(e) => setNewKey(e.target.value)}
+                        type="password"
+                        placeholder="Clé API Systeme.io"
+                        className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          value={newSecret}
+                          onChange={(e) => setNewSecret(e.target.value)}
+                          type="text"
+                          placeholder="Secret Webhook"
+                          className="flex-1 bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setNewSecret(generateSecret())}
+                          className="px-3 py-2 text-xs font-medium rounded-lg bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white hover:border-pulse-accent/40 transition-all whitespace-nowrap"
+                        >
+                          🎲 Générer
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <button
+                          onClick={addAccount}
+                          disabled={!newName.trim() || !newKey.trim() || adding}
+                          className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-pulse-accent to-purple-500 text-white transition-all hover:shadow-lg hover:shadow-pulse-accent/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {adding ? "..." : "Ajouter"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
