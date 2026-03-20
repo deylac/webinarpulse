@@ -88,6 +88,12 @@ export default function SettingsModal({ onClose }) {
         a.id === id ? { ...a, webhook_secret: secret.trim() || null } : a
       )
     );
+    // Clear edit state so field shows saved value from account
+    setEditSecret((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     setSavingSecret(null);
     // Show saved confirmation
     setCopiedField(`saved-${id}`);
@@ -359,22 +365,28 @@ export default function SettingsModal({ onClose }) {
                               URLs des webhooks
                             </div>
                             <div className="space-y-1.5">
-                              <CopyRow
-                                label="Optin"
-                                value={optinUrl}
-                                copied={copiedField === `optin-${acc.id}`}
-                                onCopy={() =>
-                                  handleCopy(`optin-${acc.id}`, optinUrl)
-                                }
-                              />
-                              <CopyRow
-                                label="Ventes"
-                                value={saleUrl}
-                                copied={copiedField === `sale-${acc.id}`}
-                                onCopy={() =>
-                                  handleCopy(`sale-${acc.id}`, saleUrl)
-                                }
-                              />
+                              <div>
+                                <div className="text-[9px] text-gray-600 mb-0.5">URL Optin (inscriptions)</div>
+                                <CopyRow
+                                  label="Copier"
+                                  value={optinUrl}
+                                  copied={copiedField === `optin-${acc.id}`}
+                                  onCopy={() =>
+                                    handleCopy(`optin-${acc.id}`, optinUrl)
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <div className="text-[9px] text-gray-600 mb-0.5">URL Ventes (achats + annulations)</div>
+                                <CopyRow
+                                  label="Copier"
+                                  value={saleUrl}
+                                  copied={copiedField === `sale-${acc.id}`}
+                                  onCopy={() =>
+                                    handleCopy(`sale-${acc.id}`, saleUrl)
+                                  }
+                                />
+                              </div>
                             </div>
                           </div>
 
