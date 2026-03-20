@@ -134,6 +134,20 @@ export async function GET(request) {
         new Blob([data], { type: "application/json" })
       );
     });
+
+    // CTA click tracking — capture le moment où le viewer clique vers la page de vente
+    var ctaBtn = document.getElementById("button-db9df4e2");
+    if (ctaBtn) {
+      ctaBtn.addEventListener("click", function() {
+        player.getCurrentTime().then(function(sec) {
+          player.getDuration().then(function(dur) {
+            var pct = sec / dur;
+            sendEvent("cta_click", sec, pct);
+            updateSession(sec, pct);
+          });
+        });
+      });
+    }
   }
 
   function boot() { detectIp().then(initSession); }
