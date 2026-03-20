@@ -481,6 +481,13 @@ export default function ScriptGenerator({ webinar, onClose }) {
             warning="Si un ancien script WebinarPulse est déjà en place, remplacez-le par celui-ci."
           />
 
+          {/* Step 3 — Webhooks */}
+          <WebhookStep
+            webinar={webinar}
+            copiedStep={copiedStep}
+            onCopy={handleCopy}
+          />
+
           {/* Status indicator */}
           {!checking && status && (
             <div className={`rounded-xl border px-5 py-4 ${statusConfig[status.level].color}`}>
@@ -597,6 +604,194 @@ function StepCard({ step, title, subtitle, description, instructions, script, co
           </svg>
           {copied ? "Copié ✓" : "Copier"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Webhook step sub-component ---
+function WebhookStep({ webinar, copiedStep, onCopy }) {
+  const [webhookStatus, setWebhookStatus] = useState(null);
+  const [checkingWebhooks, setCheckingWebhooks] = useState(false);
+
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const optinUrl = `${baseUrl}/api/webhook/optin`;
+  const saleUrl = `${baseUrl}/api/webhook/sale`;
+
+  async function checkWebhookStatus() {
+    setCheckingWebhooks(true);
+    try {
+      const { data: logs } = await supabase
+        .from("webhook_log")
+        .select("event_type, signature_valid, created_at")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (!logs || logs.length === 0) {
+        setWebhookStatus({ level: "none" });
+      } else if (logs.some((l) => l.signature_valid)) {
+        setWebhookStatus({
+          level: "active",
+          count: logs.filter((l) => l.signature_valid).length,
+        });
+      } else {
+        setWebhookStatus({ level: "invalid" });
+      }
+    } catch {
+      setWebhookStatus({ level: "none" });
+    } finally {
+      setCheckingWebhooks(false);
+    }
+  }
+
+  const statusMap = {
+    none: { icon: "🔴", text: "Aucun webhook reçu", color: "text-red-400" },
+    invalid: {
+      icon: "🟡",
+      text: "Webhooks reçus — signatures invalides",
+      color: "text-yellow-400",
+    },
+    active: {
+      icon: "🟢",
+      text: `Webhooks actifs`,
+      color: "text-emerald-400",
+    },
+  };
+
+  return (
+    <div className="bg-pulse-bg border border-pulse-border rounded-xl overflow-hidden">
+      <div className="px-5 py-4">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+            3
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-white">
+              Webhooks Systeme.io{" "}
+              <span className="text-[10px] text-gray-500 font-normal ml-1">
+                recommandé
+              </span>
+            </div>
+            <div className="text-[11px] text-gray-500">
+              Identification renforcée + suivi des achats
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 leading-relaxed ml-10">
+          Les webhooks renforcent l'identification des viewers et permettent le
+          suivi des conversions (achats). Ils fonctionnent en complément des
+          scripts.
+        </p>
+      </div>
+
+      <div className="px-5 pb-4 space-y-3">
+        {/* Webhook URLs */}
+        <div className="space-y-2">
+          <div className="text-[11px] text-gray-500 uppercase tracking-wider">
+            URLs des webhooks
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-[10px] text-gray-400 bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 font-mono truncate">
+              {optinUrl}
+            </code>
+            <button
+              onClick={() => onCopy("wh-optin", optinUrl)}
+              className={`text-[10px] px-2.5 py-1.5 rounded-lg font-medium transition-all ${
+                copiedStep === "wh-optin"
+                  ? "bg-emerald-500 text-white"
+                  : "bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white"
+              }`}
+            >
+              {copiedStep === "wh-optin" ? "✓" : "Optin"}
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-[10px] text-gray-400 bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 font-mono truncate">
+              {saleUrl}
+            </code>
+            <button
+              onClick={() => onCopy("wh-sale", saleUrl)}
+              className={`text-[10px] px-2.5 py-1.5 rounded-lg font-medium transition-all ${
+                copiedStep === "wh-sale"
+                  ? "bg-emerald-500 text-white"
+                  : "bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white"
+              }`}
+            >
+              {copiedStep === "wh-sale" ? "✓" : "Ventes"}
+            </button>
+          </div>
+        </div>
+
+        {/* Instructions */}
+        <div className="text-xs text-gray-400 space-y-1.5 bg-pulse-surface border border-pulse-border rounded-lg p-3">
+          <div className="text-[11px] text-gray-300 font-medium mb-2">
+            Configuration dans Systeme.io :
+          </div>
+          <ol className="space-y-1 list-decimal list-inside text-[11px]">
+            <li>Photo de profil → Paramètres → Webhooks → Créer</li>
+            <li>
+              <strong>Webhook 1</strong> : Nom={" "}
+              <span className="text-gray-300">WebinarPulse - Optin</span>, URL =
+              copier l'URL Optin ci-dessus, Événement ={" "}
+              <span className="text-gray-300">Opt-In</span>
+            </li>
+            <li>
+              <strong>Webhook 2</strong> : Nom={" "}
+              <span className="text-gray-300">WebinarPulse - Ventes</span>, URL =
+              copier l'URL Ventes ci-dessus, Événements ={" "}
+              <span className="text-gray-300">New sale + Sale cancelled</span>
+            </li>
+            <li>
+              Entrez la même <strong>clé secrète</strong> pour les deux webhooks
+            </li>
+            <li>
+              Ajoutez cette clé dans Vercel → Settings → Environment Variables
+              sous le nom{" "}
+              <code className="text-[10px] text-pulse-accent-light">
+                WEBHOOK_SECRET
+              </code>
+            </li>
+          </ol>
+        </div>
+
+        {/* Webhook status check */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={checkWebhookStatus}
+            disabled={checkingWebhooks}
+            className="flex items-center gap-1.5 text-[11px] text-pulse-accent-light hover:text-white transition-colors disabled:opacity-50"
+          >
+            {checkingWebhooks ? (
+              <div className="w-3 h-3 border border-pulse-border border-t-pulse-accent rounded-full animate-spin" />
+            ) : (
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+            )}
+            Vérifier la connexion
+          </button>
+          {webhookStatus && (
+            <span
+              className={`text-[11px] ${
+                statusMap[webhookStatus.level].color
+              }`}
+            >
+              {statusMap[webhookStatus.level].icon}{" "}
+              {statusMap[webhookStatus.level].text}
+              {webhookStatus.count > 0 && ` — ${webhookStatus.count} événement${webhookStatus.count > 1 ? "s" : ""}`}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -54,6 +54,36 @@ async function removeTag(apiKey, contactId, tagId) {
   return res.ok;
 }
 
+// --- Batch matching: pending_registrations → anonymous sessions ---
+
+async function runBatchMatching() {
+  try {
+    const { data: matches, error } = await supabase.rpc('match_pending_registrations');
+    if (error || !matches || matches.length === 0) return 0;
+
+    let matchCount = 0;
+    for (const match of matches) {
+      const { error: viewerErr } = await supabase
+        .from('viewers')
+        .update({ email: match.email })
+        .eq('id', match.viewer_id);
+
+      if (viewerErr) continue;
+
+      await supabase
+        .from('pending_registrations')
+        .update({ matched: true, matched_session_id: match.session_id })
+        .eq('id', match.registration_id);
+
+      matchCount++;
+    }
+    return matchCount;
+  } catch (e) {
+    console.error('Batch matching error:', e);
+    return 0;
+  }
+}
+
 // --- Main handler ---
 
 export async function GET(request) {
@@ -64,6 +94,11 @@ export async function GET(request) {
   }
 
   try {
+    // 0. Run batch matching first
+    const matchCount = await runBatchMatching();
+    if (matchCount > 0) {
+      console.log(`Batch matching: ${matchCount} registration(s) matched`);
+    }
     // 1. Get active tagging rules with webinar account info
     const { data: rules, error: rulesErr } = await supabase
       .from("tagging_rules")

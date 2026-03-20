@@ -9,6 +9,7 @@ import DailyChart from "./DailyChart";
 import TranscriptTab from "./TranscriptTab";
 import DiagnosticPanel from "./DiagnosticPanel";
 import TaggingTab from "./TaggingTab";
+import ConversionTab from "./ConversionTab";
 import ScriptGenerator from "./ScriptGenerator";
 import SettingsModal from "./SettingsModal";
 import StatCard from "./StatCard";
@@ -96,6 +97,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
     { id: "retention", label: "Rétention", icon: "📉" },
     { id: "viewers", label: "Viewers", icon: "👥" },
     { id: "daily", label: "Volume", icon: "📊" },
+    { id: "conversion", label: "Conversion", icon: "💰" },
     { id: "transcript", label: "Transcript", icon: "📝" },
     { id: "tags", label: "Tags", icon: "🏷️" },
   ];
@@ -245,6 +247,9 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                 <div className="p-6">
                   <TranscriptTab webinar={webinar} />
                 </div>
+              )}
+              {tab === "conversion" && (
+                <ConversionTab webinar={webinar} sessions={sessions} />
               )}
               {tab === "tags" && (
                 <div className="p-6">
