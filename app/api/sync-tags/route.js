@@ -244,7 +244,7 @@ async function runSystemeioViewerMatching(apiKey) {
         existingEmails.add(email);
         matchCount++;
       } else {
-        await supabase.from('viewers').insert({ email, anonymous_id: null });
+        await supabase.from('viewers').upsert({ email, anonymous_id: null }, { onConflict: 'email', ignoreDuplicates: true });
         existingEmails.add(email);
         newViewers++;
       }
