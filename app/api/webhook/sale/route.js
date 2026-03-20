@@ -47,13 +47,10 @@ export async function POST(request) {
     return NextResponse.json({ error: 'No email' }, { status: 400 });
   }
 
-  // 4. Déterminer le type d'événement
-  // Systeme.io n'envoit pas toujours un champ "event"
-  // On déduit: si payload.order existe → c'est un achat
-  // Si payload.event === 'SALE_CANCELLED' ou payload.cancelled → annulation
-  const isNewSale = !!payload?.order || payload?.event === 'NEW_SALE' || !payload?.event;
-  const isCancelled = payload?.event === 'SALE_CANCELLED' || !!payload?.cancelled;
-  const eventType = isCancelled ? 'SALE_CANCELLED' : 'NEW_SALE';
+  // 4. Déterminer le type d'événement via le header X-Webhook-Event
+  const webhookEvent = request.headers.get('x-webhook-event')?.toUpperCase();
+  const isCancelled = webhookEvent === 'SALE_CANCELLED' || payload?.event === 'SALE_CANCELLED' || !!payload?.cancelled;
+  const eventType = isCancelled ? 'SALE_CANCELLED' : (webhookEvent || 'SALE_NEW');
 
   if (isCancelled) {
     // Marquer l'achat le plus récent comme annulé
