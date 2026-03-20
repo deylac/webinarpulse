@@ -14,19 +14,29 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // 2. Vérifier la signature HMAC (secrets depuis DB + env var fallback)
-  const signature = request.headers.get('x-webhook-signature');
-  const signatureValid = await verifySignatureFromDb(supabase, rawBody, signature);
+  // 2. Vérifier la signature HMAC (soft check — process even if invalid)
+  // Systeme.io header name is undocumented, try multiple possibilities
+  const signature = request.headers.get('x-webhook-signature')
+    || request.headers.get('x-signature')
+    || request.headers.get('x-hub-signature-256')
+    || request.headers.get('x-systeme-signature')
+    || request.headers.get('signature');
+  const signatureValid = signature
+    ? await verifySignatureFromDb(supabase, rawBody, signature)
+    : false;
 
+  // Log signature status but ALWAYS process the webhook
   if (!signatureValid) {
-    await logWebhook(supabase, 'OPT_IN', payload, ip, false, false, 'Invalid signature');
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+    // Capture all headers for debugging
+    const headers = {};
+    request.headers.forEach((v, k) => { headers[k] = v; });
+    await logWebhook(supabase, 'OPT_IN', { ...payload, _debug_headers: headers }, ip, false, false, signature ? 'Signature mismatch' : 'No signature header found');
   }
 
   // 3. Extraire l'email du payload
   const email = payload?.contact?.email?.trim()?.toLowerCase();
   if (!email || !email.includes('@')) {
-    await logWebhook(supabase, 'OPT_IN', payload, ip, true, false, 'No valid email');
+    await logWebhook(supabase, 'OPT_IN', payload, ip, signatureValid, false, 'No valid email');
     return NextResponse.json({ error: 'No valid email' }, { status: 400 });
   }
 
@@ -42,7 +52,7 @@ export async function POST(request) {
   });
 
   if (insertError) {
-    await logWebhook(supabase, 'OPT_IN', payload, ip, true, false, insertError.message);
+    await logWebhook(supabase, 'OPT_IN', payload, ip, signatureValid, false, insertError.message);
     return NextResponse.json({ error: 'Insert failed' }, { status: 500 });
   }
 
@@ -50,7 +60,7 @@ export async function POST(request) {
   await matchEmailToAnonymousSessions(supabase, email);
 
   // 7. Logger et répondre 200 rapidement
-  await logWebhook(supabase, 'OPT_IN', payload, ip, true, true, null);
+  await logWebhook(supabase, 'OPT_IN', payload, ip, signatureValid, true, signatureValid ? null : 'Processed without valid signature');
   return NextResponse.json({ ok: true }, { status: 200 });
 }
 

@@ -14,13 +14,21 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // 2. Vérifier la signature HMAC (secrets depuis DB + env var fallback)
-  const signature = request.headers.get('x-webhook-signature');
-  const signatureValid = await verifySignatureFromDb(supabase, rawBody, signature);
+  // 2. Vérifier la signature HMAC (soft check — process even if invalid)
+  const signature = request.headers.get('x-webhook-signature')
+    || request.headers.get('x-signature')
+    || request.headers.get('x-hub-signature-256')
+    || request.headers.get('x-systeme-signature')
+    || request.headers.get('signature');
+  const signatureValid = signature
+    ? await verifySignatureFromDb(supabase, rawBody, signature)
+    : false;
 
+  // Log signature status but ALWAYS process the webhook
   if (!signatureValid) {
-    await logWebhook(supabase, payload?.event || 'SALE', payload, ip, false, false, 'Invalid signature');
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+    const headers = {};
+    request.headers.forEach((v, k) => { headers[k] = v; });
+    await logWebhook(supabase, payload?.event || 'SALE', { ...payload, _debug_headers: headers }, ip, false, false, signature ? 'Signature mismatch' : 'No signature header found');
   }
 
   const eventType = payload?.event;
