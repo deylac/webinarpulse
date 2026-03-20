@@ -84,6 +84,74 @@ async function runBatchMatching() {
   }
 }
 
+// --- Tag-based matching: use Systeme.io contact emails to identify anonymous viewers ---
+
+async function runTagBasedMatching() {
+  try {
+    // Chercher les viewers anonymes qui ont des sessions
+    const { data: anonViewers } = await supabase
+      .from('viewers')
+      .select('id, anonymous_id')
+      .is('email', null)
+      .not('anonymous_id', 'is', null);
+
+    if (!anonViewers?.length) return 0;
+
+    // Chercher les pending_registrations non matchées
+    const { data: pendingRegs } = await supabase
+      .from('pending_registrations')
+      .select('id, email, created_at, client_ip')
+      .eq('matched', false)
+      .not('email', 'is', null);
+
+    if (!pendingRegs?.length) return 0;
+
+    let matchCount = 0;
+
+    for (const reg of pendingRegs) {
+      // Chercher les sessions de viewers anonymes proches de l'inscription
+      const regTime = new Date(reg.created_at);
+      const windowStart = new Date(regTime.getTime() - 5 * 60 * 1000).toISOString();
+      const windowEnd = new Date(regTime.getTime() + 120 * 60 * 1000).toISOString();
+
+      const { data: sessions } = await supabase
+        .from('viewing_sessions')
+        .select('id, viewer_id, client_ip, started_at, viewer:viewers(id, email)')
+        .gte('started_at', windowStart)
+        .lte('started_at', windowEnd);
+
+      if (!sessions?.length) continue;
+
+      const anonSessions = sessions.filter(s => s.viewer && !s.viewer.email);
+      if (anonSessions.length === 0) continue;
+
+      // Match par IP (le plus fiable)
+      let match = null;
+      if (reg.client_ip) {
+        match = anonSessions.find(s => s.client_ip === reg.client_ip);
+      }
+
+      // Si une seule session anonyme dans la fenêtre
+      if (!match && anonSessions.length === 1) {
+        match = anonSessions[0];
+      }
+
+      if (!match) continue;
+
+      // Assigner l'email
+      await supabase.from('viewers').update({ email: reg.email }).eq('id', match.viewer_id);
+      await supabase.from('pending_registrations')
+        .update({ matched: true, matched_session_id: match.id })
+        .eq('id', reg.id);
+      matchCount++;
+    }
+    return matchCount;
+  } catch (e) {
+    console.error('Tag-based matching error:', e);
+    return 0;
+  }
+}
+
 // --- Main handler ---
 
 export async function GET(request) {
@@ -94,10 +162,16 @@ export async function GET(request) {
   }
 
   try {
-    // 0. Run batch matching first
+    // 0a. Run batch matching (RPC-based)
     const matchCount = await runBatchMatching();
     if (matchCount > 0) {
       console.log(`Batch matching: ${matchCount} registration(s) matched`);
+    }
+
+    // 0b. Run tag-based matching (registration → anonymous session)
+    const tagMatchCount = await runTagBasedMatching();
+    if (tagMatchCount > 0) {
+      console.log(`Tag-based matching: ${tagMatchCount} viewer(s) identified`);
     }
     // 1. Get active tagging rules with webinar account info
     const { data: rules, error: rulesErr } = await supabase
