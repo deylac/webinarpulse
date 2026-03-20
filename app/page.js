@@ -6,6 +6,7 @@ import { DEMO_WEBINARS, generateDemoSessions } from "@/lib/utils";
 import WebinarList from "@/components/WebinarList";
 import Dashboard from "@/components/Dashboard";
 import SettingsModal from "@/components/SettingsModal";
+import AddWebinarModal from "@/components/AddWebinarModal";
 
 export default function Home() {
   const [demoMode, setDemoMode] = useState(false);
