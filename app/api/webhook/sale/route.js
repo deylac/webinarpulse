@@ -31,7 +31,7 @@ export async function POST(request) {
     await logWebhook(supabase, payload?.event || 'SALE', { ...payload, _debug_headers: headers }, ip, false, false, signature ? 'Signature mismatch' : 'No signature header found');
   }
 
-  const eventType = payload?.event;
+  const eventType = payload?.event || 'SALE_UNKNOWN';
   // Systeme.io payload structure varies — try multiple locations
   const email = (
     payload?.contact?.email ||
