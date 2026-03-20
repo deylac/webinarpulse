@@ -39,6 +39,19 @@ async function findContactByEmail(apiKey, email) {
   return data.items?.[0] || null;
 }
 
+async function fetchContactsByTag(apiKey, tagId, cursor = null) {
+  const params = new URLSearchParams({ limit: '100' });
+  if (cursor) params.set('after', cursor);
+  const res = await systemeioFetch(apiKey, `/contacts?tagId=${tagId}&${params}`);
+  if (!res.ok) return { items: [], hasMore: false };
+  const data = await res.json();
+  return {
+    items: data.items || [],
+    hasMore: data.hasMore || false,
+    endCursor: data.endCursor || null
+  };
+}
+
 async function assignTag(apiKey, contactId, tagId) {
   const res = await systemeioFetch(apiKey, `/contacts/${contactId}/tags`, {
     method: "POST",
@@ -152,6 +165,87 @@ async function runTagBasedMatching() {
   }
 }
 
+// --- Stratégie 4: Systeme.io tag → identify anonymous viewers ---
+// Fetch contacts with a "viewer" tag from Systeme.io and cross-reference
+
+async function runSystemeioViewerMatching(apiKey) {
+  if (!apiKey) return 0;
+
+  try {
+    // Get the viewer tag ID from app_settings
+    const { data: setting } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'systemeio_viewer_tag_id')
+      .single();
+
+    const viewerTagId = setting?.value;
+    if (!viewerTagId) return 0;
+
+    // Fetch contacts with this tag from Systeme.io
+    let allContacts = [];
+    let cursor = null;
+    let hasMore = true;
+
+    while (hasMore && allContacts.length < 500) { // Cap à 500 pour sécurité
+      await new Promise(r => setTimeout(r, 300)); // Rate limit
+      const result = await fetchContactsByTag(apiKey, viewerTagId, cursor);
+      allContacts = allContacts.concat(result.items);
+      hasMore = result.hasMore;
+      cursor = result.endCursor;
+    }
+
+    if (allContacts.length === 0) return 0;
+
+    // Get existing viewer emails
+    const { data: existingViewers } = await supabase
+      .from('viewers')
+      .select('email')
+      .not('email', 'is', null);
+
+    const existingEmails = new Set((existingViewers || []).map(v => v.email?.toLowerCase()));
+
+    let matchCount = 0;
+
+    for (const contact of allContacts) {
+      const email = contact.email?.trim()?.toLowerCase();
+      if (!email || existingEmails.has(email)) continue;
+
+      // Ce contact est tagué "Webi vu" mais pas dans nos viewers
+      // Chercher une session anonyme qui pourrait être la sienne
+      const { data: anonSessions } = await supabase
+        .from('viewing_sessions')
+        .select('id, viewer_id, started_at, viewer:viewers(id, email)')
+        .is('viewer.email', null)
+        .order('started_at', { ascending: false })
+        .limit(50);
+
+      // Filtrer les sessions vraiment anonymes
+      const sessions = (anonSessions || []).filter(s => s.viewer && !s.viewer.email);
+
+      if (sessions.length > 0) {
+        // Prendre la session anonyme la plus récente (la plus probable)
+        const match = sessions[0];
+        await supabase.from('viewers').update({ email }).eq('id', match.viewer_id);
+        existingEmails.add(email);
+        matchCount++;
+        console.log(`Systeme.io tag match: ${email} → viewer ${match.viewer_id}`);
+      } else {
+        // Pas de session anonyme → créer un viewer pour référence future
+        await supabase.from('viewers').insert({ email, anonymous_id: null });
+        existingEmails.add(email);
+      }
+
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    return matchCount;
+  } catch (e) {
+    console.error('Systeme.io viewer matching error:', e);
+    return 0;
+  }
+}
+
 // --- Main handler ---
 
 export async function GET(request) {
@@ -212,7 +306,12 @@ export async function GET(request) {
       if (setting?.value) fallbackKey = setting.value;
     } catch {}
 
-    // 3. Get untagged sessions (aggregated by viewer + webinar)
+    // 0c. Run Systeme.io tag-based viewer matching (tag "📹 Auto IA - Webi vu")
+    const sioApiKey = Object.values(accountsMap)[0] || fallbackKey;
+    const sioMatchCount = await runSystemeioViewerMatching(sioApiKey);
+    if (sioMatchCount > 0) {
+      console.log(`Systeme.io tag matching: ${sioMatchCount} viewer(s) identified`);
+    }
     const { data: sessions, error: sessErr } = await supabase.rpc("get_untagged_sessions");
 
     if (sessErr) {
