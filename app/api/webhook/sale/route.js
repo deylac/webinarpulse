@@ -24,65 +24,38 @@ export async function POST(request) {
     ? await verifySignatureFromDb(supabase, rawBody, signature)
     : false;
 
-  // Log signature status but ALWAYS process the webhook
   if (!signatureValid) {
     const headers = {};
     request.headers.forEach((v, k) => { headers[k] = v; });
-    await logWebhook(supabase, payload?.event || 'SALE', { ...payload, _debug_headers: headers }, ip, false, false, signature ? 'Signature mismatch' : 'No signature header found');
+    await logWebhook(supabase, 'SALE_RECEIVED', { ...payload, _debug_headers: headers }, ip, false, false, signature ? 'Signature mismatch' : 'No signature header found');
   }
 
-  const eventType = payload?.event || 'SALE_UNKNOWN';
-  // Systeme.io payload structure varies — try multiple locations
+  // 3. Extraire l'email — Systeme.io met le contact à la racine
   const email = (
     payload?.contact?.email ||
     payload?.email ||
     payload?.buyer?.email ||
     payload?.customer?.email ||
-    payload?.sale?.buyer_email ||
-    payload?.data?.contact?.email ||
-    payload?.data?.email
+    payload?.order?.buyer_email ||
+    payload?.data?.contact?.email
   )?.trim()?.toLowerCase();
+
   const systemeioContactId = (payload?.contact?.id || payload?.data?.contact?.id)?.toString() || null;
 
   if (!email) {
-    // Log full payload so we can see the structure
-    await logWebhook(supabase, eventType || 'SALE_UNKNOWN', payload, ip, signatureValid, false, 'No email found in any known field');
+    await logWebhook(supabase, 'SALE_NO_EMAIL', payload, ip, signatureValid, false, 'No email found in any known field');
     return NextResponse.json({ error: 'No email' }, { status: 400 });
   }
 
-  // 3. Traiter selon le type d'événement
-  if (eventType === 'NEW_SALE') {
-    const sale = payload?.sale || {};
+  // 4. Déterminer le type d'événement
+  // Systeme.io n'envoit pas toujours un champ "event"
+  // On déduit: si payload.order existe → c'est un achat
+  // Si payload.event === 'SALE_CANCELLED' ou payload.cancelled → annulation
+  const isNewSale = !!payload?.order || payload?.event === 'NEW_SALE' || !payload?.event;
+  const isCancelled = payload?.event === 'SALE_CANCELLED' || !!payload?.cancelled;
+  const eventType = isCancelled ? 'SALE_CANCELLED' : 'NEW_SALE';
 
-    // Trouver le viewer par email
-    const { data: viewers } = await supabase
-      .from('viewers')
-      .select('id')
-      .eq('email', email)
-      .limit(1);
-
-    const viewerId = viewers?.[0]?.id || null;
-
-    // Insérer l'achat
-    const { error: insertError } = await supabase.from('purchases').insert({
-      viewer_id: viewerId,
-      email,
-      product_name: sale.plan_name || null,
-      product_price: sale.amount || null,
-      systemeio_contact_id: systemeioContactId,
-      webhook_payload: payload
-    });
-
-    if (insertError) {
-      await logWebhook(supabase, eventType, payload, ip, true, false, insertError.message);
-      return NextResponse.json({ error: 'Insert failed' }, { status: 500 });
-    }
-
-    await logWebhook(supabase, eventType, payload, ip, true, true, null);
-    return NextResponse.json({ ok: true }, { status: 200 });
-  }
-
-  if (eventType === 'SALE_CANCELLED') {
+  if (isCancelled) {
     // Marquer l'achat le plus récent comme annulé
     const { error: updateError } = await supabase
       .from('purchases')
@@ -92,11 +65,42 @@ export async function POST(request) {
       .order('created_at', { ascending: false })
       .limit(1);
 
-    await logWebhook(supabase, eventType, payload, ip, true, !updateError, updateError?.message);
+    await logWebhook(supabase, 'SALE_CANCELLED', payload, ip, signatureValid, !updateError, updateError?.message);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  // Événement non géré
-  await logWebhook(supabase, eventType, payload, ip, true, false, 'Unknown event type');
+  // 5. Traiter comme un nouvel achat
+  // Extraire les infos de la commande
+  const order = payload?.order || payload?.sale || {};
+
+  // Trouver le viewer par email
+  const { data: viewers } = await supabase
+    .from('viewers')
+    .select('id')
+    .eq('email', email)
+    .limit(1);
+
+  const viewerId = viewers?.[0]?.id || null;
+
+  // Extraire prix et nom du produit
+  const productName = order.plan_name || order.product_name || payload?.coupon?.code || null;
+  const productPrice = order.totalPrice || order.amount || order.total_price || null;
+
+  // Insérer l'achat
+  const { error: insertError } = await supabase.from('purchases').insert({
+    viewer_id: viewerId,
+    email,
+    product_name: productName,
+    product_price: productPrice,
+    systemeio_contact_id: systemeioContactId,
+    webhook_payload: payload
+  });
+
+  if (insertError) {
+    await logWebhook(supabase, eventType, payload, ip, signatureValid, false, insertError.message);
+    return NextResponse.json({ error: 'Insert failed' }, { status: 500 });
+  }
+
+  await logWebhook(supabase, eventType, payload, ip, signatureValid, true, null);
   return NextResponse.json({ ok: true }, { status: 200 });
 }
