@@ -42,6 +42,15 @@ export async function GET(request) {
     }).then(function(r) { return r.json(); });
   }
 
+  // Detect client IP for anonymous session matching
+  var clientIp = null;
+  function detectIp() {
+    return fetch("https://api.ipify.org?format=json")
+      .then(function(r) { return r.json(); })
+      .then(function(d) { clientIp = d.ip; })
+      .catch(function() { /* IP detection failed, matching will use other methods */ });
+  }
+
   function initSession() {
     var viewer = email
       ? { email: email, anonymous_id: null }
@@ -53,7 +62,8 @@ export async function GET(request) {
         return sb("viewing_sessions", "POST", {
           webinar_id: WEBINAR_ID, viewer_id: vid,
           user_agent: navigator.userAgent,
-          referrer: document.referrer || null
+          referrer: document.referrer || null,
+          client_ip: clientIp
         });
       })
       .then(function(s) {
@@ -126,9 +136,10 @@ export async function GET(request) {
     });
   }
 
+  function boot() { detectIp().then(initSession); }
   if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", initSession);
-  else initSession();
+    document.addEventListener("DOMContentLoaded", boot);
+  else boot();
 })();
 <\/script>`;
 

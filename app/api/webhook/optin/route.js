@@ -34,21 +34,24 @@ export async function POST(request) {
   }
 
   // 3. Extraire l'email du payload
-  const email = payload?.contact?.email?.trim()?.toLowerCase();
+  // Systeme.io uses "customer" for sale webhooks, "contact" for optin
+  const email = (payload?.contact?.email || payload?.customer?.email)?.trim()?.toLowerCase();
   if (!email || !email.includes('@')) {
     await logWebhook(supabase, 'OPT_IN', payload, ip, signatureValid, false, 'No valid email');
     return NextResponse.json({ error: 'No valid email' }, { status: 400 });
   }
 
-  // 4. Extraire le first_name des fields
+  // 4. Extraire le first_name et le clientIp du payload Systeme.io
   const firstName = payload?.contact?.fields?.find(f => f.slug === 'first_name')?.value || null;
+  const clientIp = payload?.contact?.clientIp || payload?.customer?.clientIp || ip;
 
-  // 5. Insérer dans pending_registrations
+  // 5. Insérer dans pending_registrations (avec IP pour matching)
   const { error: insertError } = await supabase.from('pending_registrations').insert({
     email,
     webinar_slug: '_webhook_optin',
     first_name: firstName,
-    source: 'webhook_optin'
+    source: 'webhook_optin',
+    client_ip: clientIp
   });
 
   if (insertError) {
@@ -56,37 +59,42 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Insert failed' }, { status: 500 });
   }
 
-  // 6. Matching temps réel : chercher des sessions anonymes récentes pour cet email
-  await matchEmailToAnonymousSessions(supabase, email);
+  // 6. Matching temps réel : chercher des sessions anonymes récentes par IP
+  await matchEmailToAnonymousSessions(supabase, email, clientIp);
 
   // 7. Logger et répondre 200 rapidement
   await logWebhook(supabase, 'OPT_IN', payload, ip, signatureValid, true, signatureValid ? null : 'Processed without valid signature');
   return NextResponse.json({ ok: true }, { status: 200 });
 }
 
-async function matchEmailToAnonymousSessions(supabase, email) {
+async function matchEmailToAnonymousSessions(supabase, email, clientIp) {
   try {
-    // Chercher toutes les sessions anonymes des 30 dernières minutes
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    // Chercher les sessions anonymes des 60 dernières minutes
+    const sixtyMinAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const { data: anonSessions } = await supabase
       .from('viewing_sessions')
-      .select('id, viewer_id, viewer:viewers(id, email, anonymous_id)')
-      .gte('started_at', thirtyMinAgo);
+      .select('id, viewer_id, client_ip, viewer:viewers(id, email, anonymous_id)')
+      .gte('started_at', sixtyMinAgo);
 
     if (!anonSessions || anonSessions.length === 0) return;
 
-    // Filtrer les sessions dont le viewer est bien anonyme
+    // Filtrer les sessions dont le viewer est anonyme
     const sessionsToMatch = anonSessions.filter(s => s.viewer && !s.viewer.email);
 
-    for (const session of sessionsToMatch) {
-      // Mettre à jour le viewer avec l'email
+    // Si on a une IP, matcher uniquement les sessions avec la même IP (fiable)
+    // Sinon, ne pas matcher du tout (trop risqué sans critère de discrimination)
+    if (!clientIp) return;
+
+    const ipMatches = sessionsToMatch.filter(s => s.client_ip === clientIp);
+    if (ipMatches.length === 0) return;
+
+    for (const session of ipMatches) {
       await supabase
         .from('viewers')
         .update({ email })
         .eq('id', session.viewer_id);
 
-      // Marquer le pending_registration comme matché
       await supabase
         .from('pending_registrations')
         .update({ matched: true, matched_session_id: session.id })
@@ -97,3 +105,4 @@ async function matchEmailToAnonymousSessions(supabase, email) {
     console.error('Matching error:', e);
   }
 }
+
