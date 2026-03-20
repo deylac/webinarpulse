@@ -25,11 +25,11 @@ export default function WebinarList({ webinars, demoMode, onSelect, onAdd, onDel
       try {
         const { data } = await supabase
           .from("viewing_sessions")
-          .select("id, max_video_percent, viewer_email")
+          .select("id, max_video_percent, viewer:viewers(email)")
           .eq("webinar_id", w.id);
         const sessions = data || [];
         const total = sessions.length;
-        const identified = sessions.filter((s) => s.viewer_email).length;
+        const identified = sessions.filter((s) => s.viewer?.email).length;
         const avgPercent = total > 0
           ? Math.round(sessions.reduce((sum, s) => sum + (s.max_video_percent || 0), 0) / total)
           : 0;
