@@ -21,6 +21,10 @@ export async function GET(request) {
     ctaButtonId = w?.cta_button_id || null;
   } catch {}
 
+  // Determine app base URL for /api/ip call
+  const reqUrl = new URL(request.url);
+  const appBaseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+
   const script = `<!-- WebinarPulse Tracking — ${webinarName} -->
 <script src="https://player.vimeo.com/api/player.js"><\/script>
 <script>
@@ -28,6 +32,7 @@ export async function GET(request) {
   var SB_URL = "${supabaseUrl}";
   var SB_KEY = "${supabaseKey}";
   var WEBINAR_ID = "${webinarId}";
+  var APP_URL = "${appBaseUrl}";
 
   var params = new URLSearchParams(window.location.search);
   var email = params.get("email") || params.get("contact_email") || params.get("e") || null;
@@ -51,13 +56,13 @@ export async function GET(request) {
     }).then(function(r) { return r.json(); });
   }
 
-  // Detect client IP for anonymous session matching
+  // Detect client IP via our own endpoint (more reliable than third-party)
   var clientIp = null;
   function detectIp() {
-    return fetch("https://api.ipify.org?format=json")
+    return fetch(APP_URL + "/api/ip")
       .then(function(r) { return r.json(); })
       .then(function(d) { clientIp = d.ip; })
-      .catch(function() { /* IP detection failed, matching will use other methods */ });
+      .catch(function() { /* IP detection failed */ });
   }
 
   function initSession() {
