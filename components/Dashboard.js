@@ -25,6 +25,8 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
   const [chapters, setChapters] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [timeAgo, setTimeAgo] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
   const lastLoadRef = useRef(0);
   const COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -235,11 +237,39 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
               </svg>
             </button>
             {reliabilityScore !== null && (
-              <div className="flex items-center gap-1.5 ml-auto" title={`Indice de fiabilité des données : ${reliabilityScore}%\n\n• ${stats.identified}/${stats.total} sessions identifiées (${Math.round(stats.identified / stats.total * 100)}%)\n• ${sessions.filter(s => (s.duration_seconds || 0) > 30).length}/${stats.total} sessions de qualité\n\nCe score augmente avec le nombre de sessions identifiées, la qualité des données et le volume.`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${reliabilityScore >= 70 ? 'bg-emerald-400' : reliabilityScore >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} />
-                <span className={`text-[11px] font-medium ${reliabilityScore >= 70 ? 'text-emerald-400/80' : reliabilityScore >= 40 ? 'text-amber-400/80' : 'text-red-400/80'}`}>
-                  Fiabilité {reliabilityScore}%
-                </span>
+              <div className="flex items-center gap-2 ml-auto">
+                <div className="flex items-center gap-1.5" title={`Indice de fiabilité des données : ${reliabilityScore}%\n\n• ${stats.identified}/${stats.total} sessions identifiées (${Math.round(stats.identified / stats.total * 100)}%)\n• ${sessions.filter(s => (s.duration_seconds || 0) > 30).length}/${stats.total} sessions de qualité\n\nCe score augmente avec le nombre de sessions identifiées, la qualité des données et le volume.`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${reliabilityScore >= 70 ? 'bg-emerald-400' : reliabilityScore >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} />
+                  <span className={`text-[11px] font-medium ${reliabilityScore >= 70 ? 'text-emerald-400/80' : reliabilityScore >= 40 ? 'text-amber-400/80' : 'text-red-400/80'}`}>
+                    Fiabilité {reliabilityScore}%
+                  </span>
+                </div>
+                <button
+                  onClick={async () => {
+                    setSyncing(true);
+                    setSyncResult(null);
+                    try {
+                      const res = await fetch('/api/sync-tags');
+                      const data = await res.json();
+                      const matched = data.matching?.systemeio?.matched || 0;
+                      const tagBased = data.matching?.tagBased || 0;
+                      const total = matched + tagBased;
+                      setSyncResult(total > 0 ? `✓ ${total} identifié(s)` : '✓ À jour');
+                      if (total > 0) { loadSessions(); }
+                    } catch { setSyncResult('Erreur'); }
+                    setSyncing(false);
+                    setTimeout(() => setSyncResult(null), 4000);
+                  }}
+                  disabled={syncing}
+                  className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border border-pulse-border text-gray-500 hover:text-pulse-accent-light hover:border-pulse-accent/30 hover:bg-pulse-accent/5 transition-all disabled:opacity-40"
+                  title="Lancer la synchronisation des tags Systeme.io pour identifier les viewers anonymes"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={syncing ? 'animate-spin' : ''}>
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
+                  {syncing ? 'Sync...' : syncResult || 'Sync'}
+                </button>
               </div>
             )}
           </div>
