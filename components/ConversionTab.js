@@ -40,10 +40,15 @@ export default function ConversionTab({ webinar, sessions }) {
     return purchases.filter((p) => uniqueViewers.includes(p.email));
   }, [purchases, uniqueViewers]);
 
+  // Unique buyer emails (for conversion rate — 1 person with 3 upsells = 1 conversion)
+  const uniqueBuyerEmails = useMemo(() => {
+    return [...new Set(buyers.map((b) => b.email))];
+  }, [buyers]);
+
   const conversionRate = useMemo(() => {
     if (uniqueViewers.length === 0) return 0;
-    return Math.round((buyers.length / uniqueViewers.length) * 1000) / 10;
-  }, [buyers, uniqueViewers]);
+    return Math.round((uniqueBuyerEmails.length / uniqueViewers.length) * 1000) / 10;
+  }, [uniqueBuyerEmails, uniqueViewers]);
 
   // Threshold analysis: conversion rate at each 10% video milestone
   const thresholdData = useMemo(() => {
@@ -194,7 +199,7 @@ export default function ConversionTab({ webinar, sessions }) {
             {conversionRate}%
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {buyers.length} acheteur{buyers.length > 1 ? "s" : ""} /{" "}
+            {uniqueBuyerEmails.length} acheteur{uniqueBuyerEmails.length > 1 ? "s" : ""} /{" "}
             {uniqueViewers.length} identifié{uniqueViewers.length > 1 ? "s" : ""}
           </div>
         </div>
