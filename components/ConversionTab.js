@@ -40,6 +40,9 @@ export default function ConversionTab({ webinar, sessions }) {
     return purchases.filter((p) => uniqueViewers.includes(p.email));
   }, [purchases, uniqueViewers]);
 
+  // All purchases (including non-viewer buyers)
+  const allBuyers = purchases;
+
   const conversionRate = useMemo(() => {
     if (uniqueViewers.length === 0) return 0;
     return Math.round((buyers.length / uniqueViewers.length) * 1000) / 10;
@@ -152,6 +155,12 @@ export default function ConversionTab({ webinar, sessions }) {
     );
   }
 
+  // Helper: format price from centimes to euros
+  function formatPrice(centimes) {
+    if (centimes == null) return "–";
+    return `${(centimes / 100).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}€`;
+  }
+
   // Empty state
   if (purchases.length === 0) {
     return (
@@ -198,13 +207,10 @@ export default function ConversionTab({ webinar, sessions }) {
             Chiffre d'affaires
           </div>
           <div className="text-2xl font-bold text-white">
-            {buyers
-              .reduce((sum, b) => sum + (b.product_price || 0), 0)
-              .toLocaleString("fr-FR")}
-            €
+            {formatPrice(allBuyers.reduce((sum, b) => sum + (b.product_price || 0), 0))}
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {buyers.length} vente{buyers.length > 1 ? "s" : ""}
+            {allBuyers.length} vente{allBuyers.length > 1 ? "s" : ""}
           </div>
         </div>
 
@@ -304,7 +310,7 @@ export default function ConversionTab({ webinar, sessions }) {
                   </td>
                   <td className="py-3 pr-4 text-gray-400">{b.product}</td>
                   <td className="py-3 pr-4 text-emerald-400 font-medium">
-                    {b.price != null ? `${b.price}€` : "–"}
+                    {formatPrice(b.price)}
                   </td>
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">
@@ -330,11 +336,11 @@ export default function ConversionTab({ webinar, sessions }) {
                   </td>
                 </tr>
               ))}
-              {buyerDetails.length === 0 && (
+              {buyerDetails.length === 0 && allBuyers.length > 0 && (
                 <tr>
                   <td
                     colSpan={6}
-                    className="py-8 text-center text-gray-500 text-sm"
+                    className="py-4 text-center text-gray-500 text-xs"
                   >
                     Aucun acheteur identifié parmi les viewers de ce webinaire.
                   </td>
@@ -344,6 +350,52 @@ export default function ConversionTab({ webinar, sessions }) {
           </table>
         </div>
       </div>
+
+      {/* All purchases (including non-viewers) */}
+      {allBuyers.length > 0 && buyerDetails.length === 0 && (
+        <div>
+          <h3 className="font-display text-base font-semibold text-white mb-1">
+            Tous les achats ({allBuyers.length})
+          </h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Achats enregistrés — certains acheteurs n'ont pas encore été identifiés comme viewers.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-pulse-border">
+                  <th className="pb-3 pr-4">Email</th>
+                  <th className="pb-3 pr-4">Produit</th>
+                  <th className="pb-3 pr-4">Prix</th>
+                  <th className="pb-3">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allBuyers.map((b, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-pulse-border/50 hover:bg-pulse-deep/50 transition-colors"
+                  >
+                    <td className="py-3 pr-4 text-white font-medium">{b.email}</td>
+                    <td className="py-3 pr-4 text-gray-400">{b.product_name || "–"}</td>
+                    <td className="py-3 pr-4 text-emerald-400 font-medium">
+                      {formatPrice(b.product_price)}
+                    </td>
+                    <td className="py-3 text-gray-500 text-xs">
+                      {new Date(b.created_at).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
