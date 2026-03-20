@@ -12,6 +12,7 @@ import TaggingTab from "./TaggingTab";
 import ConversionTab from "./ConversionTab";
 import ScriptGenerator from "./ScriptGenerator";
 import SettingsModal from "./SettingsModal";
+import SetupChecklist from "./SetupChecklist";
 import StatCard from "./StatCard";
 
 export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
@@ -27,6 +28,15 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
     loadSessions();
     loadChapters();
   }, [webinar, dateRange]);
+
+  // Listen for tab navigation events from SetupChecklist
+  useEffect(() => {
+    function handleGoTab(e) {
+      setTab(e.detail);
+    }
+    document.addEventListener("wp-goto-tab", handleGoTab);
+    return () => document.removeEventListener("wp-goto-tab", handleGoTab);
+  }, []);
 
   async function loadChapters() {
     if (demoMode) return;
@@ -191,6 +201,15 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                 color="yellow"
               />
             </div>
+
+            {/* Setup checklist */}
+            {!demoMode && (
+              <SetupChecklist
+                webinar={webinar}
+                onOpenScript={() => setShowScript(true)}
+                onOpenSettings={() => setShowSettings(true)}
+              />
+            )}
 
             {/* Tabs */}
             <div className="flex gap-0 mb-5 border-b border-pulse-border animate-fade-in animate-fade-in-delay-2">
