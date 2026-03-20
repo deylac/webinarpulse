@@ -286,9 +286,9 @@ export default function SettingsModal({ onClose }) {
                             <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">
                               Secret Webhook
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                               <input
-                                type="password"
+                                type="text"
                                 value={
                                   editSecret[acc.id] !== undefined
                                     ? editSecret[acc.id]
@@ -300,7 +300,7 @@ export default function SettingsModal({ onClose }) {
                                     [acc.id]: e.target.value,
                                   }))
                                 }
-                                placeholder="Clé secrète partagée avec Systeme.io"
+                                placeholder="Cliquez Générer →"
                                 className="flex-1 bg-pulse-surface border border-pulse-border rounded-lg px-2.5 py-1.5 text-xs text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
                               />
                               <button
@@ -312,8 +312,24 @@ export default function SettingsModal({ onClose }) {
                                   }))
                                 }
                                 className="text-[10px] px-2 py-1.5 rounded-lg bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white hover:border-pulse-accent/40 transition-all"
+                                title="Générer un secret aléatoire"
                               >
                                 🎲
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const val = editSecret[acc.id] !== undefined ? editSecret[acc.id] : acc.webhook_secret || "";
+                                  if (val) handleCopy(`secret-${acc.id}`, val);
+                                }}
+                                className={`text-[10px] px-2 py-1.5 rounded-lg transition-all ${
+                                  copiedField === `secret-${acc.id}`
+                                    ? "bg-emerald-500 text-white"
+                                    : "bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white hover:border-pulse-accent/40"
+                                }`}
+                                title="Copier le secret"
+                              >
+                                {copiedField === `secret-${acc.id}` ? "✓" : "📋"}
                               </button>
                               <button
                                 onClick={() => saveSecret(acc.id)}
@@ -324,8 +340,8 @@ export default function SettingsModal({ onClose }) {
                               </button>
                             </div>
                             <p className="text-[10px] text-gray-600 mt-1">
-                              Même valeur que le champ "Secret key" dans
-                              Systeme.io → Webhooks
+                              Copiez ce secret et collez-le dans Systeme.io →
+                              Webhooks → champ "Secret key"
                             </p>
                           </div>
 
