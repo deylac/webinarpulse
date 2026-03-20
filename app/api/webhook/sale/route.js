@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifySignature, getSupabaseAdmin, logWebhook } from '@/lib/webhookUtils';
+import { verifySignatureFromDb, getSupabaseAdmin, logWebhook } from '@/lib/webhookUtils';
 
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
@@ -14,10 +14,9 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // 2. Vérifier la signature HMAC
+  // 2. Vérifier la signature HMAC (secrets depuis DB + env var fallback)
   const signature = request.headers.get('x-webhook-signature');
-  const secret = process.env.WEBHOOK_SECRET;
-  const signatureValid = verifySignature(rawBody, signature, secret);
+  const signatureValid = await verifySignatureFromDb(supabase, rawBody, signature);
 
   if (!signatureValid) {
     await logWebhook(supabase, payload?.event || 'SALE', payload, ip, false, false, 'Invalid signature');

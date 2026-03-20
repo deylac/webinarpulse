@@ -8,10 +8,20 @@ export default function SettingsModal({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
   const [newKey, setNewKey] = useState("");
+  const [newSecret, setNewSecret] = useState("");
   const [adding, setAdding] = useState(false);
   const [showKeys, setShowKeys] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+  const [editSecret, setEditSecret] = useState({});
+  const [savingSecret, setSavingSecret] = useState(null);
+  const [copiedField, setCopiedField] = useState(null);
+  const [webhookStatuses, setWebhookStatuses] = useState({});
+
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const optinUrl = `${baseUrl}/api/webhook/optin`;
+  const saleUrl = `${baseUrl}/api/webhook/sale`;
 
   useEffect(() => {
     loadAccounts();
@@ -32,13 +42,18 @@ export default function SettingsModal({ onClose }) {
     setAdding(true);
     const { data, error } = await supabase
       .from("systemeio_accounts")
-      .insert({ name: newName.trim(), api_key: newKey.trim() })
+      .insert({
+        name: newName.trim(),
+        api_key: newKey.trim(),
+        webhook_secret: newSecret.trim() || null,
+      })
       .select()
       .single();
     if (!error && data) {
       setAccounts((prev) => [...prev, data]);
       setNewName("");
       setNewKey("");
+      setNewSecret("");
     }
     setAdding(false);
   }
@@ -46,13 +61,14 @@ export default function SettingsModal({ onClose }) {
   async function deleteAccount(id) {
     await supabase.from("systemeio_accounts").delete().eq("id", id);
     setAccounts((prev) => prev.filter((a) => a.id !== id));
+    if (expandedId === id) setExpandedId(null);
   }
 
   async function renameAccount(id) {
     if (!editName.trim()) return;
     await supabase
       .from("systemeio_accounts")
-      .update({ name: editName.trim(), updated_at: new Date().toISOString() })
+      .update({ name: editName.trim() })
       .eq("id", id);
     setAccounts((prev) =>
       prev.map((a) => (a.id === id ? { ...a, name: editName.trim() } : a))
@@ -60,10 +76,58 @@ export default function SettingsModal({ onClose }) {
     setEditingId(null);
   }
 
+  async function saveSecret(id) {
+    setSavingSecret(id);
+    const secret = editSecret[id] || "";
+    await supabase
+      .from("systemeio_accounts")
+      .update({ webhook_secret: secret.trim() || null })
+      .eq("id", id);
+    setAccounts((prev) =>
+      prev.map((a) =>
+        a.id === id ? { ...a, webhook_secret: secret.trim() || null } : a
+      )
+    );
+    setSavingSecret(null);
+  }
+
+  async function checkWebhookStatus(accountId) {
+    try {
+      const { data: logs } = await supabase
+        .from("webhook_log")
+        .select("event_type, signature_valid, created_at")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (!logs || logs.length === 0) {
+        setWebhookStatuses((prev) => ({ ...prev, [accountId]: "none" }));
+      } else if (logs.some((l) => l.signature_valid)) {
+        setWebhookStatuses((prev) => ({ ...prev, [accountId]: "active" }));
+      } else {
+        setWebhookStatuses((prev) => ({ ...prev, [accountId]: "invalid" }));
+      }
+    } catch {
+      setWebhookStatuses((prev) => ({ ...prev, [accountId]: "none" }));
+    }
+  }
+
   function maskKey(key) {
     if (!key) return "—";
     return key.slice(0, 8) + "•".repeat(12) + key.slice(-4);
   }
+
+  function handleCopy(field, text) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    });
+  }
+
+  const statusLabels = {
+    none: { icon: "🔴", text: "Aucun webhook reçu", color: "text-red-400" },
+    invalid: { icon: "🟡", text: "Signatures invalides", color: "text-yellow-400" },
+    active: { icon: "🟢", text: "Webhooks actifs", color: "text-emerald-400" },
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -107,90 +171,248 @@ export default function SettingsModal({ onClose }) {
                   {accounts.map((acc) => (
                     <div
                       key={acc.id}
-                      className="bg-pulse-bg border border-pulse-border rounded-xl px-4 py-3.5"
+                      className="bg-pulse-bg border border-pulse-border rounded-xl overflow-hidden"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-emerald-400/30 shadow-sm flex-shrink-0" />
-                          {editingId === acc.id ? (
+                      {/* Account header — clickable to expand */}
+                      <div
+                        className="px-4 py-3.5 cursor-pointer hover:bg-pulse-surface/30 transition-colors"
+                        onClick={() =>
+                          setExpandedId(expandedId === acc.id ? null : acc.id)
+                        }
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-emerald-400/30 shadow-sm flex-shrink-0" />
+                            {editingId === acc.id ? (
+                              <div
+                                className="flex items-center gap-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  className="bg-pulse-surface border border-pulse-border rounded-lg px-2.5 py-1 text-sm text-white focus:outline-none focus:border-pulse-accent/50"
+                                  autoFocus
+                                  onKeyDown={(e) =>
+                                    e.key === "Enter" && renameAccount(acc.id)
+                                  }
+                                />
+                                <button
+                                  onClick={() => renameAccount(acc.id)}
+                                  className="text-xs text-pulse-accent-light hover:text-white transition-colors"
+                                >
+                                  ✓
+                                </button>
+                                <button
+                                  onClick={() => setEditingId(null)}
+                                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-sm font-medium text-white truncate">
+                                {acc.name}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              className={`text-gray-500 transition-transform ${
+                                expandedId === acc.id ? "rotate-180" : ""
+                              }`}
+                            >
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Expanded profile */}
+                      {expandedId === acc.id && (
+                        <div className="px-4 pb-4 pt-1 border-t border-pulse-border/50 space-y-4">
+                          {/* API Key */}
+                          <div>
+                            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">
+                              Clé API Systeme.io
+                            </div>
                             <div className="flex items-center gap-2">
-                              <input
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                className="bg-pulse-surface border border-pulse-border rounded-lg px-2.5 py-1 text-sm text-white focus:outline-none focus:border-pulse-accent/50"
-                                autoFocus
-                                onKeyDown={(e) => e.key === "Enter" && renameAccount(acc.id)}
-                              />
+                              <span className="text-xs text-gray-400 font-mono truncate flex-1">
+                                {showKeys[acc.id]
+                                  ? acc.api_key
+                                  : maskKey(acc.api_key)}
+                              </span>
                               <button
-                                onClick={() => renameAccount(acc.id)}
-                                className="text-xs text-pulse-accent-light hover:text-white transition-colors"
+                                onClick={() =>
+                                  setShowKeys((prev) => ({
+                                    ...prev,
+                                    [acc.id]: !prev[acc.id],
+                                  }))
+                                }
+                                className="text-gray-600 hover:text-gray-400 transition-colors"
                               >
-                                ✓
-                              </button>
-                              <button
-                                onClick={() => setEditingId(null)}
-                                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                              >
-                                ✕
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  {showKeys[acc.id] ? (
+                                    <>
+                                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                                      <line x1="1" y1="1" x2="23" y2="23" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                      <circle cx="12" cy="12" r="3" />
+                                    </>
+                                  )}
+                                </svg>
                               </button>
                             </div>
-                          ) : (
-                            <span className="text-sm font-medium text-white truncate">
-                              {acc.name}
-                            </span>
-                          )}
+                          </div>
+
+                          {/* Webhook Secret */}
+                          <div>
+                            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">
+                              Secret Webhook
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="password"
+                                value={
+                                  editSecret[acc.id] !== undefined
+                                    ? editSecret[acc.id]
+                                    : acc.webhook_secret || ""
+                                }
+                                onChange={(e) =>
+                                  setEditSecret((prev) => ({
+                                    ...prev,
+                                    [acc.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Clé secrète partagée avec Systeme.io"
+                                className="flex-1 bg-pulse-surface border border-pulse-border rounded-lg px-2.5 py-1.5 text-xs text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                              />
+                              <button
+                                onClick={() => saveSecret(acc.id)}
+                                disabled={savingSecret === acc.id}
+                                className="text-[10px] px-2.5 py-1.5 rounded-lg bg-pulse-accent/20 text-pulse-accent-light hover:bg-pulse-accent/30 transition-colors disabled:opacity-40 font-medium"
+                              >
+                                {savingSecret === acc.id ? "..." : "Sauver"}
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-gray-600 mt-1">
+                              Même valeur que le champ "Secret key" dans
+                              Systeme.io → Webhooks
+                            </p>
+                          </div>
+
+                          {/* Webhook URLs */}
+                          <div>
+                            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">
+                              URLs des webhooks
+                            </div>
+                            <div className="space-y-1.5">
+                              <CopyRow
+                                label="Optin"
+                                value={optinUrl}
+                                copied={copiedField === `optin-${acc.id}`}
+                                onCopy={() =>
+                                  handleCopy(`optin-${acc.id}`, optinUrl)
+                                }
+                              />
+                              <CopyRow
+                                label="Ventes"
+                                value={saleUrl}
+                                copied={copiedField === `sale-${acc.id}`}
+                                onCopy={() =>
+                                  handleCopy(`sale-${acc.id}`, saleUrl)
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          {/* Instructions */}
+                          <div className="bg-pulse-surface border border-pulse-border rounded-lg p-3">
+                            <div className="text-[10px] text-gray-300 font-medium mb-1.5">
+                              Dans Systeme.io :
+                            </div>
+                            <ol className="space-y-0.5 list-decimal list-inside text-[10px] text-gray-500">
+                              <li>
+                                Photo de profil → Paramètres → Webhooks → Créer
+                              </li>
+                              <li>
+                                Webhook 1 : URL = Optin, Événement = Opt-In
+                              </li>
+                              <li>
+                                Webhook 2 : URL = Ventes, Événements = New sale
+                                + Sale cancelled
+                              </li>
+                              <li>
+                                Utiliser le même secret pour les deux webhooks
+                              </li>
+                            </ol>
+                          </div>
+
+                          {/* Webhook status + actions */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => checkWebhookStatus(acc.id)}
+                                className="flex items-center gap-1.5 text-[10px] text-pulse-accent-light hover:text-white transition-colors"
+                              >
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="23 4 23 10 17 10" />
+                                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                                </svg>
+                                Vérifier
+                              </button>
+                              {webhookStatuses[acc.id] && (
+                                <span
+                                  className={`text-[10px] ${
+                                    statusLabels[webhookStatuses[acc.id]].color
+                                  }`}
+                                >
+                                  {statusLabels[webhookStatuses[acc.id]].icon}{" "}
+                                  {statusLabels[webhookStatuses[acc.id]].text}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingId(acc.id);
+                                  setEditName(acc.name);
+                                }}
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-pulse-accent-light hover:bg-pulse-accent/10 transition-all"
+                                title="Renommer"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteAccount(acc.id);
+                                }}
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                title="Supprimer"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <button
-                            onClick={() => {
-                              setEditingId(acc.id);
-                              setEditName(acc.name);
-                            }}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-pulse-accent-light hover:bg-pulse-accent/10 transition-all"
-                            title="Renommer"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => deleteAccount(acc.id)}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                            title="Supprimer"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-xs text-gray-500 font-mono">
-                          {showKeys[acc.id] ? acc.api_key : maskKey(acc.api_key)}
-                        </span>
-                        <button
-                          onClick={() =>
-                            setShowKeys((prev) => ({ ...prev, [acc.id]: !prev[acc.id] }))
-                          }
-                          className="text-gray-600 hover:text-gray-400 transition-colors"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            {showKeys[acc.id] ? (
-                              <>
-                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                                <line x1="1" y1="1" x2="23" y2="23" />
-                              </>
-                            ) : (
-                              <>
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                <circle cx="12" cy="12" r="3" />
-                              </>
-                            )}
-                          </svg>
-                        </button>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -215,6 +437,13 @@ export default function SettingsModal({ onClose }) {
                     placeholder="Clé API Systeme.io"
                     className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
                   />
+                  <input
+                    value={newSecret}
+                    onChange={(e) => setNewSecret(e.target.value)}
+                    type="password"
+                    placeholder="Secret Webhook (optionnel)"
+                    className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 focus:outline-none focus:border-pulse-accent/50"
+                  />
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] text-gray-600">
                       Systeme.io → Profil → Paramètres → Public API keys
@@ -233,6 +462,27 @@ export default function SettingsModal({ onClose }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Copyable URL row
+function CopyRow({ label, value, copied, onCopy }) {
+  return (
+    <div className="flex items-center gap-2">
+      <code className="flex-1 text-[10px] text-gray-400 bg-pulse-deep border border-pulse-border rounded px-2 py-1 font-mono truncate">
+        {value}
+      </code>
+      <button
+        onClick={onCopy}
+        className={`text-[10px] px-2 py-1 rounded font-medium transition-all flex-shrink-0 ${
+          copied
+            ? "bg-emerald-500 text-white"
+            : "bg-pulse-surface border border-pulse-border text-gray-400 hover:text-white"
+        }`}
+      >
+        {copied ? "✓" : label}
+      </button>
     </div>
   );
 }
