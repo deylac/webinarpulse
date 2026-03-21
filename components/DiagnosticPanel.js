@@ -78,6 +78,54 @@ export default function DiagnosticPanel({ chapters, sessions, videoDuration, web
     };
   }
 
+  // Fetch buyer vs non-buyer comparison stats
+  async function fetchBuyerStats() {
+    if (!sessions?.length) return null;
+
+    // Get identified viewer emails from sessions
+    const identifiedSessions = sessions.filter(s => s.viewer?.email);
+    if (!identifiedSessions.length) return null;
+
+    // Fetch all purchases
+    const { data: purchases } = await supabase
+      .from("purchases")
+      .select("email");
+
+    if (!purchases?.length) return null;
+
+    const buyerEmails = new Set(purchases.map(p => p.email?.toLowerCase()).filter(Boolean));
+
+    // Split sessions into buyers vs non-buyers
+    const buyerSessions = identifiedSessions.filter(s => buyerEmails.has(s.viewer.email?.toLowerCase()));
+    const nonBuyerSessions = identifiedSessions.filter(s => !buyerEmails.has(s.viewer.email?.toLowerCase()));
+
+    if (!buyerSessions.length) return { buyers: 0, nonBuyers: nonBuyerSessions.length, buyerData: null, nonBuyerData: null };
+
+    const computeStats = (arr) => {
+      const total = arr.length;
+      if (!total) return null;
+      return {
+        count: total,
+        avgDuration: Math.round(arr.reduce((s, x) => s + (x.duration_seconds || 0), 0) / total),
+        avgPercent: Math.round(arr.reduce((s, x) => s + (x.max_video_percent || 0), 0) / total),
+        completed: arr.filter(x => (x.max_video_percent || 0) >= 80).length,
+        completionRate: Math.round((arr.filter(x => (x.max_video_percent || 0) >= 80).length / total) * 100),
+      };
+    };
+
+    // Find tipping point: the minimum progression beyond which most buyers watched
+    const buyerPercents = buyerSessions.map(s => s.max_video_percent || 0).sort((a, b) => a - b);
+    const tippingPoint = buyerPercents[Math.floor(buyerPercents.length * 0.25)]; // 75% of buyers watched beyond this point
+
+    return {
+      buyers: buyerSessions.length,
+      nonBuyers: nonBuyerSessions.length,
+      buyerData: computeStats(buyerSessions),
+      nonBuyerData: computeStats(nonBuyerSessions),
+      tippingPoint: Math.round(tippingPoint),
+    };
+  }
+
   async function generateDiagnostic() {
     if (!chapters?.length) return;
     setLoading(true);
@@ -98,8 +146,11 @@ export default function DiagnosticPanel({ chapters, sessions, videoDuration, web
       };
     });
 
-    // Fetch CTA stats
-    const ctaStats = await fetchCtaStats();
+    // Fetch CTA stats and buyer stats in parallel
+    const [ctaStats, buyerStats] = await Promise.all([
+      fetchCtaStats(),
+      fetchBuyerStats(),
+    ]);
 
     try {
       const res = await fetch("/api/generate-diagnostic", {
@@ -111,6 +162,7 @@ export default function DiagnosticPanel({ chapters, sessions, videoDuration, web
           stats: globalStats,
           video_duration: videoDuration,
           cta_stats: ctaStats,
+          buyer_stats: buyerStats,
         }),
       });
       const data = await res.json();

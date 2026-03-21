@@ -4,7 +4,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 export async function POST(request) {
   try {
-    const { chapters, webinar_name, stats, video_duration, cta_stats } = await request.json();
+    const { chapters, webinar_name, stats, video_duration, cta_stats, buyer_stats } = await request.json();
 
     if (!chapters?.length) {
       return NextResponse.json(
@@ -55,6 +55,20 @@ ${cta_stats.clickChapterTitle ? `- Les clics se concentrent dans le chapitre "${
       }
     }
 
+    // --- Build buyer stats block ---
+    let buyerText = '';
+    if (buyer_stats && buyer_stats.buyerData) {
+      buyerText = `
+PROFIL ACHETEURS vs NON-ACHETEURS :
+- ${buyer_stats.buyers} acheteurs identifiés sur ${buyer_stats.buyers + buyer_stats.nonBuyers} viewers identifiés
+- Acheteurs : durée moy. ${Math.round(buyer_stats.buyerData.avgDuration / 60)} min, progression ${buyer_stats.buyerData.avgPercent}%, complétion ${buyer_stats.buyerData.completionRate}%
+- Non-acheteurs : durée moy. ${Math.round(buyer_stats.nonBuyerData.avgDuration / 60)} min, progression ${buyer_stats.nonBuyerData.avgPercent}%, complétion ${buyer_stats.nonBuyerData.completionRate}%
+- Point de bascule : 75% des acheteurs ont visionné au moins ${buyer_stats.tippingPoint}% de la vidéo
+`;
+    } else if (buyer_stats && buyer_stats.buyers === 0) {
+      buyerText = '\nPROFIL ACHETEURS : Aucun achat enregistré pour les viewers identifiés de ce webinaire.\n';
+    }
+
     // --- Build the full prompt ---
     const prompt = `Tu es un expert en optimisation de webinaires de vente evergreen. Tu dois analyser un webinaire et produire un diagnostic actionnable basé sur les données réelles et les benchmarks de l'industrie.
 
@@ -88,6 +102,7 @@ DIAGNOSTIC DES PROBLÈMES TYPIQUES :
 - CTA clicks bas malgré bonne rétention → transition faible vers l'offre, proposition de valeur pas claire
 
 ═══ DONNÉES DU WEBINAIRE "${webinar_name || "sans nom"}" (durée : ${durationMin} min) ═══
+${buyerText}
 ${statsText}${ctaText}
 CHAPITRES ET RÉTENTION PAR SECTION :
 
@@ -102,6 +117,8 @@ Analyse ces données et produis un diagnostic en 4 à 6 points. Structure ton an
 2. AXE STRUCTURE : Évalue le timing du pitch (position dans la vidéo vs recommandation 55-70%), la durée totale vs recommandation, et l'équilibre entre les types de chapitres.
 
 3. AXE CONVERSION : Analyse le taux de CTA clicks vs benchmark (8-17%), le moment du clic, et les opportunités d'amélioration.
+
+4. AXE PROFIL ACHETEUR (si des données d'achat sont disponibles) : Compare le comportement de visionnage des acheteurs vs non-acheteurs. Identifie le "point de bascule" — le seuil de visionnage au-delà duquel les viewers convertissent. Donne des recommandations pour amener plus de viewers au-delà de ce seuil.
 
 Pour chaque point du diagnostic :
 - Cite les CHIFFRES précis (rétention, drops, %, benchmarks)
