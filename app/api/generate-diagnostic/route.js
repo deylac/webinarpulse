@@ -28,9 +28,11 @@ export async function POST(request) {
         const durSec = ch.end_seconds - ch.start_seconds;
         const durMin = (durSec / 60).toFixed(1);
         const pctOfVideo = Math.round((durSec / (video_duration || 1)) * 100);
-        return `${i + 1}. [${ch.chapter_type || 'unknown'}] "${ch.title}" (${ch.start_seconds}s → ${ch.end_seconds}s, durée: ${durMin}min, ${pctOfVideo}% de la vidéo) — Rétention: ${ch.startRetention?.toFixed(1) || "?"}% → ${ch.endRetention?.toFixed(1) || "?"}% (drop: ${ch.drop?.toFixed(1) || "?"}%)`;
+        let line = `${i + 1}. [${ch.chapter_type || 'unknown'}] "${ch.title}" (${ch.start_seconds}s → ${ch.end_seconds}s, durée: ${durMin}min, ${pctOfVideo}% de la vidéo) — Rétention: ${ch.startRetention?.toFixed(1) || "?"}% → ${ch.endRetention?.toFixed(1) || "?"}% (drop: ${ch.drop?.toFixed(1) || "?"}%)`;
+        if (ch.summary) line += `\n   Contenu : ${ch.summary}`;
+        return line;
       })
-      .join("\n");
+      .join("\n\n");
 
     // --- Build stats block ---
     const statsText = stats ? `
@@ -110,7 +112,7 @@ ${chaptersText}
 
 ═══ INSTRUCTIONS ═══
 
-Analyse ces données et produis un diagnostic en 4 à 6 points. Structure ton analyse selon ces 3 axes :
+Analyse ces données et produis un diagnostic en 5 à 7 points. Structure ton analyse selon ces axes :
 
 1. AXE RÉTENTION : Compare la rétention de chaque chapitre aux benchmarks. Identifie les sections qui perdent le plus de viewers et pourquoi.
 
@@ -119,6 +121,8 @@ Analyse ces données et produis un diagnostic en 4 à 6 points. Structure ton an
 3. AXE CONVERSION : Analyse le taux de CTA clicks vs benchmark (8-17%), le moment du clic, et les opportunités d'amélioration.
 
 4. AXE PROFIL ACHETEUR (si des données d'achat sont disponibles) : Compare le comportement de visionnage des acheteurs vs non-acheteurs. Identifie le "point de bascule" — le seuil de visionnage au-delà duquel les viewers convertissent. Donne des recommandations pour amener plus de viewers au-delà de ce seuil.
+
+5. AXE CONTENU (si des résumés de chapitres sont disponibles) : Analyse la qualité du contenu de chaque section. Évalue la force du hook, la pertinence des démos, la gestion des objections, la clarté du pitch. Identifie les sections dont le contenu pourrait expliquer les drops de rétention.
 
 Pour chaque point du diagnostic :
 - Cite les CHIFFRES précis (rétention, drops, %, benchmarks)
