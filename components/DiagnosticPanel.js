@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 const TYPE_STYLES = {
   danger: "border-red-500/20 bg-red-500/5",
@@ -9,10 +9,38 @@ const TYPE_STYLES = {
   info: "border-blue-500/20 bg-blue-500/5",
 };
 
-export default function DiagnosticPanel({ chapters, retentionData, videoDuration, webinarName }) {
+export default function DiagnosticPanel({ chapters, sessions, videoDuration, webinarName }) {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Compute retention data from sessions (same logic as RetentionChart)
+  const retentionData = useMemo(() => {
+    if (!sessions?.length || !videoDuration) return [];
+    const buckets = 50;
+    const bucketSize = videoDuration / buckets;
+    const total = sessions.length;
+    const data = [];
+    for (let i = 0; i <= buckets; i++) {
+      const timePoint = i * bucketSize;
+      const viewersAtPoint = sessions.filter(s => (s.max_video_seconds || 0) >= timePoint).length;
+      const retention = (viewersAtPoint / total) * 100;
+      data.push({ time: timePoint, retention: Math.round(retention * 10) / 10, viewers: viewersAtPoint });
+    }
+    return data;
+  }, [sessions, videoDuration]);
+
+  // Compute global stats for richer prompt
+  const globalStats = useMemo(() => {
+    if (!sessions?.length) return null;
+    const total = sessions.length;
+    const identified = sessions.filter(s => s.viewer?.email).length;
+    const avgDuration = Math.round(sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0) / total);
+    const avgPercent = Math.round(sessions.reduce((sum, s) => sum + (s.max_video_percent || 0), 0) / total);
+    const completed = sessions.filter(s => (s.max_video_percent || 0) >= 80).length;
+    const ctaClicks = sessions.filter(s => s.events?.some(e => e.event_type === 'cta_click')).length;
+    return { total, identified, avgDuration, avgPercent, completed, completionRate: Math.round((completed / total) * 100), ctaClicks };
+  }, [sessions]);
 
   async function generateDiagnostic() {
     if (!chapters?.length) return;
@@ -21,7 +49,7 @@ export default function DiagnosticPanel({ chapters, retentionData, videoDuration
 
     // Compute retention per chapter
     const enrichedChapters = chapters.map((ch) => {
-      if (!retentionData?.length || !videoDuration) return ch;
+      if (!retentionData.length || !videoDuration) return ch;
       const startPct = ch.start_seconds / videoDuration;
       const endPct = ch.end_seconds / videoDuration;
       const startIdx = Math.min(Math.round(startPct * (retentionData.length - 1)), retentionData.length - 1);
@@ -38,7 +66,12 @@ export default function DiagnosticPanel({ chapters, retentionData, videoDuration
       const res = await fetch("/api/generate-diagnostic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapters: enrichedChapters, webinar_name: webinarName }),
+        body: JSON.stringify({
+          chapters: enrichedChapters,
+          webinar_name: webinarName,
+          stats: globalStats,
+          video_duration: videoDuration,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur");

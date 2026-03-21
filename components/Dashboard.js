@@ -352,7 +352,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                   {chapters.length > 0 && (
                     <DiagnosticPanel
                       chapters={chapters}
-                      retentionData={sessions}
+                      sessions={sessions}
                       videoDuration={webinar.video_duration_seconds}
                       webinarName={webinar.name}
                     />

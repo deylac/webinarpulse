@@ -4,7 +4,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 export async function POST(request) {
   try {
-    const { chapters, webinar_name } = await request.json();
+    const { chapters, webinar_name, stats, video_duration } = await request.json();
 
     if (!chapters?.length) {
       return NextResponse.json(
@@ -21,18 +21,30 @@ export async function POST(request) {
     }
 
     const chaptersText = chapters
-      .map((ch, i) => `${i + 1}. [${ch.chapter_type}] "${ch.title}" (${ch.start_seconds}s-${ch.end_seconds}s) — Rétention: ${ch.startRetention?.toFixed(1) || "?"}% → ${ch.endRetention?.toFixed(1) || "?"}% (drop: ${ch.drop?.toFixed(1) || "?"}%)`)
+      .map((ch, i) => `${i + 1}. [${ch.chapter_type}] "${ch.title}" (${ch.start_seconds}s-${ch.end_seconds}s, durée: ${ch.end_seconds - ch.start_seconds}s) — Rétention: ${ch.startRetention?.toFixed(1) || "?"}% → ${ch.endRetention?.toFixed(1) || "?"}% (drop: ${ch.drop?.toFixed(1) || "?"}%)`)
       .join("\n");
 
-    const prompt = `Tu es un expert en optimisation de webinaires de vente.
+    const statsText = stats ? `
+Statistiques globales du webinaire :
+- ${stats.total} sessions de visionnage (${stats.identified} identifiées)
+- Durée moyenne de visionnage : ${Math.round(stats.avgDuration / 60)} minutes sur ${Math.round((video_duration || 0) / 60)} minutes de vidéo
+- Progression moyenne : ${stats.avgPercent}% de la vidéo
+- Taux de complétion (>80%) : ${stats.completionRate}% (${stats.completed} viewers)
+${stats.ctaClicks > 0 ? `- ${stats.ctaClicks} clics sur le bouton CTA (Call to Action)` : '- Aucun clic CTA enregistré'}
+` : '';
 
-Voici les chapitres d'un webinaire "${webinar_name || "sans nom"}" avec les données de rétention pour chaque section :
+    const prompt = `Tu es un expert en optimisation de webinaires de vente evergreen.
+
+Voici les données du webinaire "${webinar_name || "sans nom"}" (durée totale : ${Math.round((video_duration || 0) / 60)} minutes) :
+${statsText}
+Chapitres avec les taux de rétention par section :
 
 ${chaptersText}
 
-Génère un diagnostic actionnable en 3 à 5 points. Pour chaque point, utilise un emoji pertinent et donne :
-- Une observation factuelle basée sur les données
-- Une recommandation concrète et actionnable
+Analyse ces données et génère un diagnostic actionnable en 3 à 5 points. Pour chaque point :
+- Appuie-toi sur les CHIFFRES (rétention, drops, durée, taux de complétion)
+- Donne une recommandation concrète et actionnable
+- Si les données de rétention sont toutes à 0%, signale que le tracking doit être vérifié
 
 Format attendu : un tableau JSON avec pour chaque point :
 - "emoji": un seul emoji
