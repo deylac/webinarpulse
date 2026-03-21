@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { supabase } from "@/lib/supabase";
 
 const TYPE_STYLES = {
   danger: "border-red-500/20 bg-red-500/5",
@@ -30,7 +31,7 @@ export default function DiagnosticPanel({ chapters, sessions, videoDuration, web
     return data;
   }, [sessions, videoDuration]);
 
-  // Compute global stats for richer prompt
+  // Compute global stats
   const globalStats = useMemo(() => {
     if (!sessions?.length) return null;
     const total = sessions.length;
@@ -38,9 +39,44 @@ export default function DiagnosticPanel({ chapters, sessions, videoDuration, web
     const avgDuration = Math.round(sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0) / total);
     const avgPercent = Math.round(sessions.reduce((sum, s) => sum + (s.max_video_percent || 0), 0) / total);
     const completed = sessions.filter(s => (s.max_video_percent || 0) >= 80).length;
-    const ctaClicks = sessions.filter(s => s.events?.some(e => e.event_type === 'cta_click')).length;
-    return { total, identified, avgDuration, avgPercent, completed, completionRate: Math.round((completed / total) * 100), ctaClicks };
+    return { total, identified, avgDuration, avgPercent, completed, completionRate: Math.round((completed / total) * 100) };
   }, [sessions]);
+
+  // Fetch CTA events for this webinar's sessions
+  async function fetchCtaStats() {
+    if (!sessions?.length) return null;
+    const sessionIds = sessions.map(s => s.id);
+    
+    // Fetch cta_click events
+    const { data: ctaEvents } = await supabase
+      .from("viewing_events")
+      .select("session_id, video_seconds, video_percent")
+      .eq("event_type", "cta_click")
+      .in("session_id", sessionIds);
+
+    if (!ctaEvents?.length) return { clicks: 0, clickRate: 0, avgClickTime: null, avgClickPercent: null };
+
+    const uniqueClickers = new Set(ctaEvents.map(e => e.session_id));
+    const clickRate = Math.round((uniqueClickers.size / sessions.length) * 100);
+    const avgClickSeconds = Math.round(ctaEvents.reduce((sum, e) => sum + (e.video_seconds || 0), 0) / ctaEvents.length);
+    const avgClickPercent = Math.round(ctaEvents.reduce((sum, e) => sum + (e.video_percent || 0), 0) / ctaEvents.length * 100);
+
+    // Find which chapter the average click falls in
+    let clickChapter = null;
+    if (chapters?.length && avgClickSeconds) {
+      clickChapter = chapters.find(ch => avgClickSeconds >= ch.start_seconds && avgClickSeconds < ch.end_seconds);
+    }
+
+    return {
+      clicks: uniqueClickers.size,
+      totalClicks: ctaEvents.length,
+      clickRate,
+      avgClickSeconds,
+      avgClickPercent,
+      clickChapterTitle: clickChapter?.title || null,
+      clickChapterType: clickChapter?.chapter_type || null,
+    };
+  }
 
   async function generateDiagnostic() {
     if (!chapters?.length) return;
@@ -62,6 +98,9 @@ export default function DiagnosticPanel({ chapters, sessions, videoDuration, web
       };
     });
 
+    // Fetch CTA stats
+    const ctaStats = await fetchCtaStats();
+
     try {
       const res = await fetch("/api/generate-diagnostic", {
         method: "POST",
@@ -71,6 +110,7 @@ export default function DiagnosticPanel({ chapters, sessions, videoDuration, web
           webinar_name: webinarName,
           stats: globalStats,
           video_duration: videoDuration,
+          cta_stats: ctaStats,
         }),
       });
       const data = await res.json();

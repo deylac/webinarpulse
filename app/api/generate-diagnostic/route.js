@@ -4,7 +4,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 export async function POST(request) {
   try {
-    const { chapters, webinar_name, stats, video_duration } = await request.json();
+    const { chapters, webinar_name, stats, video_duration, cta_stats } = await request.json();
 
     if (!chapters?.length) {
       return NextResponse.json(
@@ -20,39 +20,103 @@ export async function POST(request) {
       );
     }
 
+    const durationMin = Math.round((video_duration || 0) / 60);
+
+    // --- Build chapters block ---
     const chaptersText = chapters
-      .map((ch, i) => `${i + 1}. [${ch.chapter_type}] "${ch.title}" (${ch.start_seconds}s-${ch.end_seconds}s, durée: ${ch.end_seconds - ch.start_seconds}s) — Rétention: ${ch.startRetention?.toFixed(1) || "?"}% → ${ch.endRetention?.toFixed(1) || "?"}% (drop: ${ch.drop?.toFixed(1) || "?"}%)`)
+      .map((ch, i) => {
+        const durSec = ch.end_seconds - ch.start_seconds;
+        const durMin = (durSec / 60).toFixed(1);
+        const pctOfVideo = Math.round((durSec / (video_duration || 1)) * 100);
+        return `${i + 1}. [${ch.chapter_type || 'unknown'}] "${ch.title}" (${ch.start_seconds}s → ${ch.end_seconds}s, durée: ${durMin}min, ${pctOfVideo}% de la vidéo) — Rétention: ${ch.startRetention?.toFixed(1) || "?"}% → ${ch.endRetention?.toFixed(1) || "?"}% (drop: ${ch.drop?.toFixed(1) || "?"}%)`;
+      })
       .join("\n");
 
+    // --- Build stats block ---
     const statsText = stats ? `
-Statistiques globales du webinaire :
-- ${stats.total} sessions de visionnage (${stats.identified} identifiées)
-- Durée moyenne de visionnage : ${Math.round(stats.avgDuration / 60)} minutes sur ${Math.round((video_duration || 0) / 60)} minutes de vidéo
-- Progression moyenne : ${stats.avgPercent}% de la vidéo
-- Taux de complétion (>80%) : ${stats.completionRate}% (${stats.completed} viewers)
-${stats.ctaClicks > 0 ? `- ${stats.ctaClicks} clics sur le bouton CTA (Call to Action)` : '- Aucun clic CTA enregistré'}
+STATISTIQUES GLOBALES :
+- ${stats.total} sessions de visionnage (${stats.identified} identifiées, ${stats.total - stats.identified} anonymes)
+- Durée moyenne de visionnage : ${Math.round(stats.avgDuration / 60)} min sur ${durationMin} min de vidéo (${stats.avgPercent}% de progression)
+- Taux de complétion (>80% visionné) : ${stats.completionRate}% (${stats.completed}/${stats.total} viewers)
 ` : '';
 
-    const prompt = `Tu es un expert en optimisation de webinaires de vente evergreen.
+    // --- Build CTA block ---
+    let ctaText = '';
+    if (cta_stats) {
+      if (cta_stats.clicks > 0) {
+        ctaText = `
+DONNÉES CTA (Call-to-Action) :
+- ${cta_stats.clicks} viewers ont cliqué sur le CTA (${cta_stats.clickRate}% des viewers)
+- Moment moyen du clic : à ${Math.round(cta_stats.avgClickSeconds / 60)}min (${cta_stats.avgClickPercent}% de la vidéo)
+${cta_stats.clickChapterTitle ? `- Les clics se concentrent dans le chapitre "${cta_stats.clickChapterTitle}" [${cta_stats.clickChapterType}]` : ''}
+`;
+      } else {
+        ctaText = '\nDONNÉES CTA : Aucun clic CTA enregistré.\n';
+      }
+    }
 
-Voici les données du webinaire "${webinar_name || "sans nom"}" (durée totale : ${Math.round((video_duration || 0) / 60)} minutes) :
-${statsText}
-Chapitres avec les taux de rétention par section :
+    // --- Build the full prompt ---
+    const prompt = `Tu es un expert en optimisation de webinaires de vente evergreen. Tu dois analyser un webinaire et produire un diagnostic actionnable basé sur les données réelles et les benchmarks de l'industrie.
+
+═══ BENCHMARKS DE RÉFÉRENCE (sources : ON24, GoToWebinar, BigMarker, BrightTALK, Contrast, 2023-2025) ═══
+
+DURÉE OPTIMALE :
+- Durée recommandée : 45-60 min. Au-delà, la rétention chute significativement
+- Engagement moyen on-demand : 33 min (GoToWebinar 2023)
+- Engagement moyen tous formats : 51 min (ON24 2024)
+
+RÉTENTION (viewers restant jusqu'au pitch) :
+- Excellent : >70% | Bon : 60-70% | Moyen : 50-60% | Mauvais : <50%
+- Drop normal dans les 5 premières min : 15-25%
+- Les webinaires avec guest speakers ont 3x plus d'engagement
+
+CTA CLICK-THROUGH RATE (viewers → clic CTA) :
+- Excellent : >17% | Bon : 10-17% | Moyen : 5-10% | Mauvais : <5%
+- Moyenne du marché : 8.74% (BigMarker)
+- 25% des participants cliquent sur un CTA en moyenne (MarketingProfs 2023)
+
+STRUCTURE IDÉALE D'UN WEBINAIRE EVERGREEN :
+- Hook percutant dans les 2 premières minutes
+- Le pitch/offre devrait arriver entre 55-70% de la vidéo
+- Max 3-4 démonstrations pour éviter la saturation
+- Alterner contenu théorique et démonstrations pour maintenir l'engagement
+
+DIAGNOSTIC DES PROBLÈMES TYPIQUES :
+- Drop élevé dans l'intro → le contenu ne correspond pas à la promesse d'inscription
+- Drop au milieu → problème de rythme ou de pertinence
+- Drop avant le pitch → webinaire trop long, ou l'audience sent la vente arriver
+- CTA clicks bas malgré bonne rétention → transition faible vers l'offre, proposition de valeur pas claire
+
+═══ DONNÉES DU WEBINAIRE "${webinar_name || "sans nom"}" (durée : ${durationMin} min) ═══
+${statsText}${ctaText}
+CHAPITRES ET RÉTENTION PAR SECTION :
 
 ${chaptersText}
 
-Analyse ces données et génère un diagnostic actionnable en 3 à 5 points. Pour chaque point :
-- Appuie-toi sur les CHIFFRES (rétention, drops, durée, taux de complétion)
-- Donne une recommandation concrète et actionnable
-- Si les données de rétention sont toutes à 0%, signale que le tracking doit être vérifié
+═══ INSTRUCTIONS ═══
 
-Format attendu : un tableau JSON avec pour chaque point :
+Analyse ces données et produis un diagnostic en 4 à 6 points. Structure ton analyse selon ces 3 axes :
+
+1. AXE RÉTENTION : Compare la rétention de chaque chapitre aux benchmarks. Identifie les sections qui perdent le plus de viewers et pourquoi.
+
+2. AXE STRUCTURE : Évalue le timing du pitch (position dans la vidéo vs recommandation 55-70%), la durée totale vs recommandation, et l'équilibre entre les types de chapitres.
+
+3. AXE CONVERSION : Analyse le taux de CTA clicks vs benchmark (8-17%), le moment du clic, et les opportunités d'amélioration.
+
+Pour chaque point du diagnostic :
+- Cite les CHIFFRES précis (rétention, drops, %, benchmarks)
+- Compare aux benchmarks et donne un rating (EXCELLENT/BON/MOYEN/MAUVAIS)
+- Donne une recommandation concrète et actionnable
+
+Commence par un point de synthèse avec un score global sur 100.
+
+Format : tableau JSON, chaque élément avec :
 - "emoji": un seul emoji
-- "title": titre court (max 60 caractères)
-- "detail": observation + recommandation (2-3 phrases max)
+- "title": titre court (max 60 cars)
+- "detail": observation + benchmark + recommandation (3-4 phrases max)
 - "type": "danger" | "warning" | "success" | "info"
 
-Réponds uniquement avec le tableau JSON, pas de markdown ni de backticks.`;
+Réponds UNIQUEMENT avec le tableau JSON, sans markdown ni backticks.`;
 
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -63,7 +127,7 @@ Réponds uniquement avec le tableau JSON, pas de markdown ni de backticks.`;
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 2048,
+        max_tokens: 3000,
         messages: [{ role: "user", content: prompt }],
       }),
     });
