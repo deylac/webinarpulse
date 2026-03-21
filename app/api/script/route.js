@@ -149,19 +149,28 @@ export async function GET(request) {
       );
     });
 
-    // CTA click tracking — dynamic per webinar
-    ${ctaButtonId ? `var ctaBtn = document.getElementById("${ctaButtonId}");
-    if (ctaBtn) {
-      ctaBtn.addEventListener("click", function() {
-        player.getCurrentTime().then(function(sec) {
-          player.getDuration().then(function(dur) {
-            var pct = sec / dur;
-            sendEvent("cta_click", sec, pct);
-            updateSession(sec, pct);
+    // CTA click tracking — poll for button (Systeme.io renders elements dynamically)
+    ${ctaButtonId ? `(function waitForCta() {
+      var attempts = 0;
+      var maxAttempts = 30; // 15 seconds
+      function tryAttachCta() {
+        var ctaBtn = document.getElementById("${ctaButtonId}");
+        if (ctaBtn) {
+          ctaBtn.addEventListener("click", function() {
+            player.getCurrentTime().then(function(sec) {
+              player.getDuration().then(function(dur) {
+                var pct = sec / dur;
+                sendEvent("cta_click", sec, pct);
+                updateSession(sec, pct);
+              });
+            });
           });
-        });
-      });
-    }` : '// No CTA button configured for this webinar'}
+        } else if (++attempts < maxAttempts) {
+          setTimeout(tryAttachCta, 500);
+        }
+      }
+      tryAttachCta();
+    })();` : '// No CTA button configured for this webinar'}
   }
 
   function boot() { detectIp().then(initSession); }
