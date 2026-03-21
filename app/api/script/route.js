@@ -149,10 +149,10 @@ export async function GET(request) {
       );
     });
 
-    // CTA click tracking — poll for button (Systeme.io renders elements dynamically)
+    // CTA click tracking — poll for button (Systeme.io renders elements dynamically, button may appear after 120s+)
     ${ctaButtonId ? `(function waitForCta() {
       var attempts = 0;
-      var maxAttempts = 30; // 15 seconds
+      var maxAttempts = 300; // 5 minutes (every 1s)
       function tryAttachCta() {
         var ctaBtn = document.getElementById("${ctaButtonId}");
         if (ctaBtn) {
@@ -166,7 +166,7 @@ export async function GET(request) {
             });
           });
         } else if (++attempts < maxAttempts) {
-          setTimeout(tryAttachCta, 500);
+          setTimeout(tryAttachCta, 1000);
         }
       }
       tryAttachCta();
