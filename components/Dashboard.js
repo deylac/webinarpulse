@@ -355,6 +355,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                       sessions={sessions}
                       videoDuration={webinar.video_duration_seconds}
                       webinarName={webinar.name}
+                      webinarId={webinar.id}
                     />
                   )}
                 </div>

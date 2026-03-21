@@ -10,7 +10,7 @@ const TYPE_STYLES = {
   info: "border-blue-500/20 bg-blue-500/5",
 };
 
-export default function DiagnosticPanel({ chapters, sessions, videoDuration, webinarName }) {
+export default function DiagnosticPanel({ chapters, sessions, videoDuration, webinarName, webinarId }) {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -159,6 +159,7 @@ export default function DiagnosticPanel({ chapters, sessions, videoDuration, web
         body: JSON.stringify({
           chapters: enrichedChapters,
           webinar_name: webinarName,
+          webinar_id: webinarId,
           stats: globalStats,
           video_duration: videoDuration,
           cta_stats: ctaStats,

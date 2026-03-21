@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export async function POST(request) {
   try {
-    const { chapters, webinar_name, stats, video_duration, cta_stats, buyer_stats } = await request.json();
+    const { chapters, webinar_name, webinar_id, stats, video_duration, cta_stats, buyer_stats } = await request.json();
 
     if (!chapters?.length) {
       return NextResponse.json(
@@ -169,6 +174,15 @@ Réponds UNIQUEMENT avec le tableau JSON, sans markdown ni backticks.`;
       insights = JSON.parse(jsonMatch[0]);
     } catch {
       return NextResponse.json({ error: "Parse error", raw: aiText }, { status: 502 });
+    }
+
+    // --- Save to history ---
+    if (webinar_id) {
+      await supabaseAdmin.from("diagnostic_history").insert({
+        webinar_id,
+        insights,
+        stats_snapshot: { stats, cta_stats, buyer_stats, video_duration },
+      }).then(() => {}).catch(() => {});
     }
 
     return NextResponse.json({ insights });
