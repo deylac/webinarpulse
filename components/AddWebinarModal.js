@@ -17,9 +17,23 @@ export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
   const [ctaButtonId, setCtaButtonId] = useState(editWebinar?.cta_button_id || "");
   const [viewerTagId, setViewerTagId] = useState(editWebinar?.systemeio_viewer_tag_id || "");
   const [productName, setProductName] = useState(editWebinar?.main_product_name || "");
-  const [productPrice, setProductPrice] = useState(editWebinar?.main_product_price ? String(editWebinar.main_product_price / 100) : "");
-  const [productPayments, setProductPayments] = useState(editWebinar?.main_product_payments ? String(editWebinar.main_product_payments) : "1");
-  const [productInstallment, setProductInstallment] = useState(editWebinar?.main_product_installment_price ? String(editWebinar.main_product_installment_price / 100) : "");
+  const [plans, setPlans] = useState(() => {
+    // Load from JSONB or legacy columns
+    if (editWebinar?.main_product_plans?.length) {
+      return editWebinar.main_product_plans.map(p => ({
+        price: String(p.price / 100),
+        payments: String(p.payments),
+      }));
+    }
+    if (editWebinar?.main_product_price) {
+      const legacy = [{ price: String(editWebinar.main_product_price / 100), payments: "1" }];
+      if (editWebinar.main_product_payments > 1 && editWebinar.main_product_installment_price) {
+        legacy.push({ price: String(editWebinar.main_product_installment_price / 100), payments: String(editWebinar.main_product_payments) });
+      }
+      return legacy;
+    }
+    return [{ price: "", payments: "1" }];
+  });
   const [showAdvanced, setShowAdvanced] = useState(!!(editWebinar?.cta_button_id || editWebinar?.systemeio_viewer_tag_id || editWebinar?.main_product_name));
 
   useEffect(() => {
@@ -56,7 +70,12 @@ export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
 
   function handleSubmit() {
     if (!name || !vimeoId || !slug) return;
-    const payments = parseInt(productPayments) || 1;
+    const validPlans = plans
+      .filter(p => p.price && parseFloat(p.price) > 0)
+      .map(p => ({
+        price: Math.round(parseFloat(p.price) * 100),
+        payments: parseInt(p.payments) || 1,
+      }));
     const data = {
       name,
       vimeo_video_id: vimeoId,
@@ -66,11 +85,7 @@ export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
       cta_button_id: ctaButtonId.trim() || null,
       systemeio_viewer_tag_id: viewerTagId.trim() || null,
       main_product_name: productName.trim() || null,
-      main_product_price: productPrice ? Math.round(parseFloat(productPrice) * 100) : null,
-      main_product_payments: payments,
-      main_product_installment_price: payments > 1 && productInstallment
-        ? Math.round(parseFloat(productInstallment) * 100)
-        : null,
+      main_product_plans: validPlans.length > 0 ? validPlans : null,
     };
     onAdd(data, editWebinar?.id);
   }
@@ -228,54 +243,68 @@ export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
                         className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[10px] text-gray-500 mb-1 font-medium">
-                          Prix (paiement unique, €)
-                        </label>
-                        <input
-                          type="number"
-                          value={productPrice}
-                          onChange={(e) => setProductPrice(e.target.value)}
-                          placeholder="297"
-                          className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-gray-500 mb-1 font-medium">
-                          Nombre de paiements
-                        </label>
-                        <select
-                          value={productPayments}
-                          onChange={(e) => setProductPayments(e.target.value)}
-                          className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 outline-none focus:border-pulse-accent/50 cursor-pointer"
+
+                    <div>
+                      <label className="block text-[10px] text-gray-500 mb-1.5 font-medium">
+                        Options de paiement
+                      </label>
+                      <div className="space-y-2">
+                        {plans.map((plan, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              value={plan.price}
+                              onChange={(e) => {
+                                const next = [...plans];
+                                next[idx] = { ...next[idx], price: e.target.value };
+                                setPlans(next);
+                              }}
+                              placeholder="Prix €"
+                              className="flex-1 bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
+                            />
+                            <select
+                              value={plan.payments}
+                              onChange={(e) => {
+                                const next = [...plans];
+                                next[idx] = { ...next[idx], payments: e.target.value };
+                                setPlans(next);
+                              }}
+                              className="bg-pulse-surface border border-pulse-border rounded-lg px-2 py-2 text-sm text-gray-300 outline-none focus:border-pulse-accent/50 cursor-pointer"
+                            >
+                              <option value="1">1×</option>
+                              <option value="2">2×</option>
+                              <option value="3">3×</option>
+                              <option value="4">4×</option>
+                              <option value="6">6×</option>
+                            </select>
+                            {parseInt(plan.payments) > 1 && plan.price && (
+                              <span className="text-[9px] text-emerald-400 whitespace-nowrap">
+                                = {(parseInt(plan.payments) * parseFloat(plan.price)).toLocaleString("fr-FR")}€
+                              </span>
+                            )}
+                            {plans.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => setPlans(plans.filter((_, i) => i !== idx))}
+                                className="p-1 text-gray-500 hover:text-red-400 transition-colors"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setPlans([...plans, { price: "", payments: "1" }])}
+                          className="text-[10px] text-gray-500 hover:text-pulse-accent-light transition-colors"
                         >
-                          <option value="1">1× (paiement unique)</option>
-                          <option value="2">2× paiements</option>
-                          <option value="3">3× paiements</option>
-                          <option value="4">4× paiements</option>
-                        </select>
+                          + Ajouter une option de paiement
+                        </button>
                       </div>
+                      <p className="text-[9px] text-gray-600 mt-1.5">
+                        Ex : 366€ en 1× et 190€ en 2× pour le même produit
+                      </p>
                     </div>
-                    {parseInt(productPayments) > 1 && (
-                      <div>
-                        <label className="block text-[10px] text-gray-500 mb-1 font-medium">
-                          Prix par paiement (€)
-                        </label>
-                        <input
-                          type="number"
-                          value={productInstallment}
-                          onChange={(e) => setProductInstallment(e.target.value)}
-                          placeholder={`ex: ${Math.round((parseFloat(productPrice) || 0) / parseInt(productPayments))}`}
-                          className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
-                        />
-                        {productInstallment && (
-                          <p className="text-[9px] text-emerald-400 mt-1">
-                            Total : {parseInt(productPayments)}× {parseFloat(productInstallment)}€ = {(parseInt(productPayments) * parseFloat(productInstallment)).toLocaleString("fr-FR")}€
-                          </p>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

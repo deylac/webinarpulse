@@ -105,23 +105,52 @@ export default function ConversionTab({ webinar, sessions }) {
     };
   }, [buyers, mainProductName]);
 
-  // Revenue forecast with installments
+  // Revenue forecast with installments (supports multiple plans)
   const forecast = useMemo(() => {
-    if (!mainProductStats || !webinar?.main_product_payments || webinar.main_product_payments <= 1) return null;
-    const payments = webinar.main_product_payments;
-    const installmentCentimes = webinar.main_product_installment_price || 0;
-    const totalForecasted = mainProductStats.count * payments * installmentCentimes;
-    const collected = mainProductStats.count * installmentCentimes; // first payment
-    const remaining = totalForecasted - collected;
+    const plansConfig = webinar?.main_product_plans;
+    if (!mainProductStats || !plansConfig?.length) return null;
+    // Only show forecast if at least one plan has multiple payments
+    const hasInstallments = plansConfig.some(p => p.payments > 1);
+    if (!hasInstallments) return null;
+
+    // Match each main product purchase to a plan based on price
+    const mainPurchases = buyers.filter(
+      (b) => b.product_name?.toLowerCase().includes(mainProductName.toLowerCase())
+    );
+
+    let totalForecasted = 0;
+    let totalCollected = 0;
+    const planBreakdown = [];
+
+    plansConfig.forEach(plan => {
+      const tolerance = plan.price * 0.05; // 5% tolerance for price matching
+      const matched = mainPurchases.filter(
+        p => Math.abs((p.product_price || 0) - plan.price) <= tolerance
+      );
+      const uniqueEmails = [...new Set(matched.map(m => m.email))];
+      if (uniqueEmails.length > 0) {
+        const forecasted = uniqueEmails.length * plan.payments * plan.price;
+        const collected = uniqueEmails.length * plan.price; // first payment
+        totalForecasted += forecasted;
+        totalCollected += collected;
+        planBreakdown.push({
+          count: uniqueEmails.length,
+          payments: plan.payments,
+          price: plan.price,
+          total: forecasted,
+        });
+      }
+    });
+
+    if (totalForecasted === 0) return null;
+
     return {
-      payments,
-      installment: installmentCentimes,
       total: totalForecasted,
-      collected,
-      remaining,
-      mainBuyers: mainProductStats.count,
+      collected: totalCollected,
+      remaining: totalForecasted - totalCollected,
+      breakdown: planBreakdown,
     };
-  }, [mainProductStats, webinar]);
+  }, [mainProductStats, webinar, buyers, mainProductName]);
 
   // Threshold analysis
   const thresholdData = useMemo(() => {
@@ -299,9 +328,7 @@ export default function ConversionTab({ webinar, sessions }) {
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
               <div className="text-lg font-bold text-white">{formatPrice(forecast.total)}</div>
-              <div className="text-[10px] text-gray-400 mt-0.5">
-                {forecast.mainBuyers} vente{forecast.mainBuyers > 1 ? "s" : ""} × {forecast.payments}× {formatPrice(forecast.installment)}
-              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">CA total attendu</div>
             </div>
             <div>
               <div className="text-lg font-bold text-emerald-400">{formatPrice(forecast.collected)}</div>
@@ -312,6 +339,15 @@ export default function ConversionTab({ webinar, sessions }) {
               <div className="text-[10px] text-gray-400 mt-0.5">À venir</div>
             </div>
           </div>
+          {forecast.breakdown.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-emerald-500/10 space-y-1">
+              {forecast.breakdown.map((b, i) => (
+                <div key={i} className="text-[10px] text-gray-400">
+                  {b.count} vente{b.count > 1 ? "s" : ""} en {b.payments}× {formatPrice(b.price)} = {formatPrice(b.total)}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
