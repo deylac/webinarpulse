@@ -49,19 +49,41 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
     return [...new Set([...uniqueViewers, ...knownEmails])];
   }, [uniqueViewers, knownEmails]);
 
-  // Buyers who are known to the app (have session OR exist in viewers table)
+  // Helper: check if product name matches the main product (fuzzy includes)
+  const mainProductName = webinar?.main_product_name;
+  function isMainProduct(productName) {
+    if (!mainProductName || !productName) return false;
+    return productName.toLowerCase().includes(mainProductName.toLowerCase());
+  }
+
+  // Helper: detect which payment plan a purchase matches
+  const plansConfig = webinar?.main_product_plans;
+  function detectPlan(purchase) {
+    if (!plansConfig?.length) return null;
+    const price = purchase.product_price || 0;
+    for (const plan of plansConfig) {
+      const tolerance = plan.price * 0.10; // 10% tolerance
+      if (Math.abs(price - plan.price) <= tolerance) {
+        return plan;
+      }
+    }
+    return null;
+  }
+
+  // Buyers whose email is known AND whose purchase matches the main product
   const buyers = useMemo(() => {
-    return purchases.filter((p) => allKnownEmails.includes(p.email));
-  }, [purchases, allKnownEmails]);
+    const known = purchases.filter((p) => allKnownEmails.includes(p.email));
+    if (!mainProductName) return known;
+    return known.filter((p) => isMainProduct(p.product_name));
+  }, [purchases, allKnownEmails, mainProductName]);
 
   // Buyers NOT matched — email not in viewers table at all
-  // Filtered by main product name if configured
+  // Also filtered by main product name if configured
   const unmatchedBuyers = useMemo(() => {
     const unmatched = purchases.filter((p) => p.email && !allKnownEmails.includes(p.email));
-    if (!webinar?.main_product_name) return unmatched;
-    const nameLC = webinar.main_product_name.toLowerCase();
-    return unmatched.filter((p) => p.product_name?.toLowerCase().includes(nameLC));
-  }, [purchases, allKnownEmails, webinar]);
+    if (!mainProductName) return unmatched;
+    return unmatched.filter((p) => isMainProduct(p.product_name));
+  }, [purchases, allKnownEmails, mainProductName]);
 
   // Unique unmatched buyer emails
   const uniqueUnmatchedEmails = useMemo(() => {
@@ -85,7 +107,9 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
       if (!groups[buyer.email]) {
         groups[buyer.email] = { email: buyer.email, purchases: [], totalCentimes: 0 };
       }
-      groups[buyer.email].purchases.push(buyer);
+      // Detect plan for each purchase
+      const plan = detectPlan(buyer);
+      groups[buyer.email].purchases.push({ ...buyer, detectedPlan: plan });
       groups[buyer.email].totalCentimes += buyer.product_price || 0;
     });
 
@@ -107,52 +131,44 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
           (new Date(firstPurchase.created_at) - new Date(firstSession.started_at)) /
           (1000 * 60 * 60);
       }
+      // Determine if buyer has session or is "known but no session"
+      const hasSession = buyerSessions && buyerSessions.length > 0;
       return {
         ...group,
         percent: bestPercent,
         delay,
         date: new Date(firstPurchase.created_at),
+        hasSession,
       };
     }).sort((a, b) => b.date - a.date);
-  }, [buyers, sessions]);
+  }, [buyers, sessions, plansConfig]);
 
-  // Main product stats
-  const mainProductName = webinar?.main_product_name;
+  // Main product stats (buyers is already filtered by main product name)
   const mainProductStats = useMemo(() => {
     if (!mainProductName) return null;
-    const nameLC = mainProductName.toLowerCase();
-    const mainPurchases = buyers.filter(
-      (b) => b.product_name?.toLowerCase().includes(nameLC)
-    );
-    const uniqueMainBuyers = [...new Set(mainPurchases.map((b) => b.email))];
-    const totalCentimes = mainPurchases.reduce((s, b) => s + (b.product_price || 0), 0);
+    const uniqueMainBuyers = [...new Set(buyers.map((b) => b.email))];
+    const totalCentimes = buyers.reduce((s, b) => s + (b.product_price || 0), 0);
     return {
       count: uniqueMainBuyers.length,
-      totalPurchases: mainPurchases.length,
+      totalPurchases: buyers.length,
       totalCentimes,
     };
   }, [buyers, mainProductName]);
 
   // Revenue forecast with installments (supports multiple plans)
   const forecast = useMemo(() => {
-    const plansConfig = webinar?.main_product_plans;
     if (!mainProductStats || !plansConfig?.length) return null;
     // Only show forecast if at least one plan has multiple payments
     const hasInstallments = plansConfig.some(p => p.payments > 1);
     if (!hasInstallments) return null;
-
-    // Match each main product purchase to a plan based on price
-    const mainPurchases = buyers.filter(
-      (b) => b.product_name?.toLowerCase().includes(mainProductName.toLowerCase())
-    );
 
     let totalForecasted = 0;
     let totalCollected = 0;
     const planBreakdown = [];
 
     plansConfig.forEach(plan => {
-      const tolerance = plan.price * 0.05; // 5% tolerance for price matching
-      const matched = mainPurchases.filter(
+      const tolerance = plan.price * 0.10; // 10% tolerance for price matching
+      const matched = buyers.filter(
         p => Math.abs((p.product_price || 0) - plan.price) <= tolerance
       );
       const uniqueEmails = [...new Set(matched.map(m => m.email))];
@@ -241,10 +257,7 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
     return `${(centimes / 100).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}€`;
   }
 
-  function isMainProduct(productName) {
-    if (!mainProductName || !productName) return false;
-    return productName.toLowerCase().includes(mainProductName.toLowerCase());
-  }
+
 
   if (loading) {
     return (
