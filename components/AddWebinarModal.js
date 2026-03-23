@@ -16,7 +16,11 @@ export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
   const [addingAccount, setAddingAccount] = useState(false);
   const [ctaButtonId, setCtaButtonId] = useState(editWebinar?.cta_button_id || "");
   const [viewerTagId, setViewerTagId] = useState(editWebinar?.systemeio_viewer_tag_id || "");
-  const [showAdvanced, setShowAdvanced] = useState(!!(editWebinar?.cta_button_id || editWebinar?.systemeio_viewer_tag_id));
+  const [productName, setProductName] = useState(editWebinar?.main_product_name || "");
+  const [productPrice, setProductPrice] = useState(editWebinar?.main_product_price ? String(editWebinar.main_product_price / 100) : "");
+  const [productPayments, setProductPayments] = useState(editWebinar?.main_product_payments ? String(editWebinar.main_product_payments) : "1");
+  const [productInstallment, setProductInstallment] = useState(editWebinar?.main_product_installment_price ? String(editWebinar.main_product_installment_price / 100) : "");
+  const [showAdvanced, setShowAdvanced] = useState(!!(editWebinar?.cta_button_id || editWebinar?.systemeio_viewer_tag_id || editWebinar?.main_product_name));
 
   useEffect(() => {
     loadAccounts();
@@ -52,6 +56,7 @@ export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
 
   function handleSubmit() {
     if (!name || !vimeoId || !slug) return;
+    const payments = parseInt(productPayments) || 1;
     const data = {
       name,
       vimeo_video_id: vimeoId,
@@ -60,6 +65,12 @@ export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
       systemeio_account_id: selectedAccount || null,
       cta_button_id: ctaButtonId.trim() || null,
       systemeio_viewer_tag_id: viewerTagId.trim() || null,
+      main_product_name: productName.trim() || null,
+      main_product_price: productPrice ? Math.round(parseFloat(productPrice) * 100) : null,
+      main_product_payments: payments,
+      main_product_installment_price: payments > 1 && productInstallment
+        ? Math.round(parseFloat(productInstallment) * 100)
+        : null,
     };
     onAdd(data, editWebinar?.id);
   }
@@ -200,6 +211,72 @@ export default function AddWebinarModal({ onClose, onAdd, editWebinar }) {
                     className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 font-mono placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
                   />
                   <p className="text-[9px] text-gray-600 mt-1">Systeme.io → Contacts → Tags → ID dans l'URL</p>
+                </div>
+
+                {/* Product config */}
+                <div className="border-t border-pulse-border/50 pt-3 mt-1">
+                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mb-2.5">Produit principal</p>
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-[10px] text-gray-500 mb-1 font-medium">
+                        Nom du produit vendu à la fin du webinaire
+                      </label>
+                      <input
+                        value={productName}
+                        onChange={(e) => setProductName(e.target.value)}
+                        placeholder="Pack Automatisation"
+                        className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-1 font-medium">
+                          Prix (paiement unique, €)
+                        </label>
+                        <input
+                          type="number"
+                          value={productPrice}
+                          onChange={(e) => setProductPrice(e.target.value)}
+                          placeholder="297"
+                          className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-1 font-medium">
+                          Nombre de paiements
+                        </label>
+                        <select
+                          value={productPayments}
+                          onChange={(e) => setProductPayments(e.target.value)}
+                          className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 outline-none focus:border-pulse-accent/50 cursor-pointer"
+                        >
+                          <option value="1">1× (paiement unique)</option>
+                          <option value="2">2× paiements</option>
+                          <option value="3">3× paiements</option>
+                          <option value="4">4× paiements</option>
+                        </select>
+                      </div>
+                    </div>
+                    {parseInt(productPayments) > 1 && (
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-1 font-medium">
+                          Prix par paiement (€)
+                        </label>
+                        <input
+                          type="number"
+                          value={productInstallment}
+                          onChange={(e) => setProductInstallment(e.target.value)}
+                          placeholder={`ex: ${Math.round((parseFloat(productPrice) || 0) / parseInt(productPayments))}`}
+                          className="w-full bg-pulse-surface border border-pulse-border rounded-lg px-3 py-2 text-sm text-gray-300 placeholder:text-gray-600 outline-none focus:border-pulse-accent/50"
+                        />
+                        {productInstallment && (
+                          <p className="text-[9px] text-emerald-400 mt-1">
+                            Total : {parseInt(productPayments)}× {parseFloat(productInstallment)}€ = {(parseInt(productPayments) * parseFloat(productInstallment)).toLocaleString("fr-FR")}€
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

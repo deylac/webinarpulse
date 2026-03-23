@@ -40,7 +40,7 @@ export default function ConversionTab({ webinar, sessions }) {
     return purchases.filter((p) => uniqueViewers.includes(p.email));
   }, [purchases, uniqueViewers]);
 
-  // Unique buyer emails (for conversion rate — 1 person with 3 upsells = 1 conversion)
+  // Unique buyer emails
   const uniqueBuyerEmails = useMemo(() => {
     return [...new Set(buyers.map((b) => b.email))];
   }, [buyers]);
@@ -50,7 +50,80 @@ export default function ConversionTab({ webinar, sessions }) {
     return Math.round((uniqueBuyerEmails.length / uniqueViewers.length) * 1000) / 10;
   }, [uniqueBuyerEmails, uniqueViewers]);
 
-  // Threshold analysis: conversion rate at each 10% video milestone
+  // Group purchases by buyer email
+  const buyerGroups = useMemo(() => {
+    const groups = {};
+    buyers.forEach((buyer) => {
+      if (!groups[buyer.email]) {
+        groups[buyer.email] = { email: buyer.email, purchases: [], totalCentimes: 0 };
+      }
+      groups[buyer.email].purchases.push(buyer);
+      groups[buyer.email].totalCentimes += buyer.product_price || 0;
+    });
+
+    // Add viewing data to each group
+    return Object.values(groups).map((group) => {
+      const buyerSessions = sessions
+        ?.filter((s) => s.viewer_email === group.email)
+        .sort((a, b) => new Date(a.started_at) - new Date(b.started_at));
+      const bestPercent = Math.max(
+        ...(buyerSessions?.map((s) => s.max_video_percent || 0) || [0])
+      );
+      const firstSession = buyerSessions?.[0];
+      const firstPurchase = group.purchases.sort(
+        (a, b) => new Date(a.created_at) - new Date(b.created_at)
+      )[0];
+      let delay = null;
+      if (firstSession && firstPurchase) {
+        delay =
+          (new Date(firstPurchase.created_at) - new Date(firstSession.started_at)) /
+          (1000 * 60 * 60);
+      }
+      return {
+        ...group,
+        percent: bestPercent,
+        delay,
+        date: new Date(firstPurchase.created_at),
+      };
+    }).sort((a, b) => b.date - a.date);
+  }, [buyers, sessions]);
+
+  // Main product stats
+  const mainProductName = webinar?.main_product_name;
+  const mainProductStats = useMemo(() => {
+    if (!mainProductName) return null;
+    const nameLC = mainProductName.toLowerCase();
+    const mainPurchases = buyers.filter(
+      (b) => b.product_name?.toLowerCase().includes(nameLC)
+    );
+    const uniqueMainBuyers = [...new Set(mainPurchases.map((b) => b.email))];
+    const totalCentimes = mainPurchases.reduce((s, b) => s + (b.product_price || 0), 0);
+    return {
+      count: uniqueMainBuyers.length,
+      totalPurchases: mainPurchases.length,
+      totalCentimes,
+    };
+  }, [buyers, mainProductName]);
+
+  // Revenue forecast with installments
+  const forecast = useMemo(() => {
+    if (!mainProductStats || !webinar?.main_product_payments || webinar.main_product_payments <= 1) return null;
+    const payments = webinar.main_product_payments;
+    const installmentCentimes = webinar.main_product_installment_price || 0;
+    const totalForecasted = mainProductStats.count * payments * installmentCentimes;
+    const collected = mainProductStats.count * installmentCentimes; // first payment
+    const remaining = totalForecasted - collected;
+    return {
+      payments,
+      installment: installmentCentimes,
+      total: totalForecasted,
+      collected,
+      remaining,
+      mainBuyers: mainProductStats.count,
+    };
+  }, [mainProductStats, webinar]);
+
+  // Threshold analysis
   const thresholdData = useMemo(() => {
     const thresholds = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     return thresholds.map((t) => {
@@ -77,7 +150,6 @@ export default function ConversionTab({ webinar, sessions }) {
     });
   }, [sessions, buyers]);
 
-  // Find critical threshold (biggest jump)
   const criticalThreshold = useMemo(() => {
     let maxJump = 0;
     let critical = null;
@@ -91,25 +163,12 @@ export default function ConversionTab({ webinar, sessions }) {
     return critical;
   }, [thresholdData]);
 
-  // Average delay between first session and purchase
+  // Average delay
   const avgDelay = useMemo(() => {
-    const delays = buyers
-      .map((buyer) => {
-        const buyerSessions = sessions
-          ?.filter((s) => s.viewer_email === buyer.email)
-          .sort(
-            (a, b) => new Date(a.started_at) - new Date(b.started_at)
-          );
-        if (!buyerSessions?.length) return null;
-        const firstSession = new Date(buyerSessions[0].started_at);
-        const purchaseDate = new Date(buyer.created_at);
-        return (purchaseDate - firstSession) / (1000 * 60 * 60);
-      })
-      .filter((d) => d !== null && d >= 0);
-
+    const delays = buyerGroups.map((g) => g.delay).filter((d) => d !== null && d >= 0);
     if (!delays.length) return null;
     return delays.reduce((a, b) => a + b, 0) / delays.length;
-  }, [buyers, sessions]);
+  }, [buyerGroups]);
 
   function formatDelay(hours) {
     if (hours === null) return "–";
@@ -120,34 +179,15 @@ export default function ConversionTab({ webinar, sessions }) {
     return `${days}j ${h}h`;
   }
 
-  // Buyer details for the table
-  const buyerDetails = useMemo(() => {
-    return buyers.map((buyer) => {
-      const buyerSessions = sessions
-        ?.filter((s) => s.viewer_email === buyer.email)
-        .sort(
-          (a, b) => new Date(a.started_at) - new Date(b.started_at)
-        );
-      const bestPercent = Math.max(
-        ...(buyerSessions?.map((s) => s.max_video_percent || 0) || [0])
-      );
-      const firstSession = buyerSessions?.[0];
-      let delay = null;
-      if (firstSession) {
-        delay =
-          (new Date(buyer.created_at) - new Date(firstSession.started_at)) /
-          (1000 * 60 * 60);
-      }
-      return {
-        email: buyer.email,
-        product: buyer.product_name || "–",
-        price: buyer.product_price,
-        percent: bestPercent,
-        delay,
-        date: new Date(buyer.created_at),
-      };
-    });
-  }, [buyers, sessions]);
+  function formatPrice(centimes) {
+    if (centimes == null) return "–";
+    return `${(centimes / 100).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}€`;
+  }
+
+  function isMainProduct(productName) {
+    if (!mainProductName || !productName) return false;
+    return productName.toLowerCase().includes(mainProductName.toLowerCase());
+  }
 
   if (loading) {
     return (
@@ -157,13 +197,6 @@ export default function ConversionTab({ webinar, sessions }) {
     );
   }
 
-  // Helper: format price from centimes to euros
-  function formatPrice(centimes) {
-    if (centimes == null) return "–";
-    return `${(centimes / 100).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}€`;
-  }
-
-  // Empty state
   if (purchases.length === 0) {
     return (
       <div className="p-8 text-center">
@@ -186,6 +219,8 @@ export default function ConversionTab({ webinar, sessions }) {
   }
 
   const maxThresholdRate = Math.max(...thresholdData.map((t) => t.rate), 1);
+  const totalCA = buyers.reduce((sum, b) => sum + (b.product_price || 0), 0);
+  const panierMoyen = uniqueBuyerEmails.length > 0 ? Math.round(totalCA / uniqueBuyerEmails.length) : 0;
 
   return (
     <div className="p-6 space-y-8">
@@ -199,20 +234,45 @@ export default function ConversionTab({ webinar, sessions }) {
             {conversionRate}%
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {uniqueBuyerEmails.length} acheteur{uniqueBuyerEmails.length > 1 ? "s" : ""} /{" "}
-            {uniqueViewers.length} identifié{uniqueViewers.length > 1 ? "s" : ""}
+            {uniqueBuyerEmails.length} acheteur{uniqueBuyerEmails.length > 1 ? "s" : ""} unique{uniqueBuyerEmails.length > 1 ? "s" : ""} / {uniqueViewers.length} identifié{uniqueViewers.length > 1 ? "s" : ""}
           </div>
         </div>
 
+        {mainProductStats ? (
+          <div className="bg-pulse-deep rounded-xl p-4 border border-pulse-border">
+            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+              Produit principal
+            </div>
+            <div className="text-2xl font-bold text-purple-400">
+              {mainProductStats.count}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {formatPrice(mainProductStats.totalCentimes)} CA
+            </div>
+          </div>
+        ) : (
+          <div className="bg-pulse-deep rounded-xl p-4 border border-pulse-border">
+            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+              Chiffre d'affaires
+            </div>
+            <div className="text-2xl font-bold text-white">
+              {formatPrice(totalCA)}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {buyers.length} achat{buyers.length > 1 ? "s" : ""}
+            </div>
+          </div>
+        )}
+
         <div className="bg-pulse-deep rounded-xl p-4 border border-pulse-border">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
-            Chiffre d'affaires
+            CA Total
           </div>
           <div className="text-2xl font-bold text-white">
-            {formatPrice(buyers.reduce((sum, b) => sum + (b.product_price || 0), 0))}
+            {formatPrice(totalCA)}
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {buyers.length} vente{buyers.length > 1 ? "s" : ""}
+            {buyers.length} achat{buyers.length > 1 ? "s" : ""} · panier moy. {formatPrice(panierMoyen)}
           </div>
         </div>
 
@@ -227,21 +287,33 @@ export default function ConversionTab({ webinar, sessions }) {
             visionnage → achat
           </div>
         </div>
+      </div>
 
-        {criticalThreshold && (
-          <div className="bg-pulse-deep rounded-xl p-4 border border-pulse-border">
-            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
-              Seuil critique
+      {/* Forecast block */}
+      {forecast && (
+        <div className="bg-gradient-to-r from-emerald-500/10 to-purple-500/10 border border-emerald-500/20 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-lg">💰</span>
+            <h4 className="text-sm font-semibold text-white">Forecast paiements en cours</h4>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-lg font-bold text-white">{formatPrice(forecast.total)}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                {forecast.mainBuyers} vente{forecast.mainBuyers > 1 ? "s" : ""} × {forecast.payments}× {formatPrice(forecast.installment)}
+              </div>
             </div>
-            <div className="text-2xl font-bold text-amber-400">
-              {criticalThreshold.threshold}%
+            <div>
+              <div className="text-lg font-bold text-emerald-400">{formatPrice(forecast.collected)}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">Encaissé (1er paiement)</div>
             </div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              conversion → {criticalThreshold.rate}%
+            <div>
+              <div className="text-lg font-bold text-amber-400">{formatPrice(forecast.remaining)}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">À venir</div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Threshold Chart */}
       <div>
@@ -284,61 +356,86 @@ export default function ConversionTab({ webinar, sessions }) {
         </div>
       </div>
 
-      {/* Buyers Table */}
+      {/* Buyers Table — grouped by email */}
       <div>
         <h3 className="font-display text-base font-semibold text-white mb-4">
-          Acheteurs ({buyerDetails.length})
+          Acheteurs ({uniqueBuyerEmails.length}) · {buyers.length} achat{buyers.length > 1 ? "s" : ""}
         </h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-pulse-border">
-                <th className="pb-3 pr-4">Email</th>
-                <th className="pb-3 pr-4">Produit</th>
-                <th className="pb-3 pr-4">Prix</th>
-                <th className="pb-3 pr-4">% vidéo</th>
+                <th className="pb-3 pr-4">Acheteur</th>
+                <th className="pb-3 pr-4">Achats</th>
+                <th className="pb-3 pr-4">Total</th>
+                <th className="pb-3 pr-4">% Vidéo</th>
                 <th className="pb-3 pr-4">Délai</th>
                 <th className="pb-3">Date</th>
               </tr>
             </thead>
             <tbody>
-              {buyerDetails.map((b, i) => (
+              {buyerGroups.map((group) => (
                 <tr
-                  key={i}
-                  className="border-b border-pulse-border/50 hover:bg-pulse-deep/50 transition-colors"
+                  key={group.email}
+                  className="border-b border-pulse-border/50 hover:bg-pulse-deep/50 transition-colors align-top"
                 >
-                  <td className="py-3 pr-4 text-white font-medium">
-                    {b.email}
+                  <td className="py-3 pr-4">
+                    <div className="text-white font-medium text-[13px]">{group.email}</div>
+                    <div className="text-[10px] text-gray-500 mt-0.5">
+                      {group.purchases.length} achat{group.purchases.length > 1 ? "s" : ""}
+                    </div>
                   </td>
-                  <td className="py-3 pr-4 text-gray-400">{b.product}</td>
-                  <td className="py-3 pr-4 text-emerald-400 font-medium">
-                    {formatPrice(b.price)}
+                  <td className="py-3 pr-4">
+                    <div className="flex flex-col gap-1.5">
+                      {group.purchases.map((p, j) => (
+                        <div key={j} className="flex items-center gap-2">
+                          <span className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded ${
+                            isMainProduct(p.product_name)
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : "bg-gray-500/20 text-gray-400"
+                          }`}>
+                            {isMainProduct(p.product_name) ? "Principal" : "Upsell"}
+                          </span>
+                          <span className="text-gray-300 text-xs truncate max-w-[160px]">
+                            {p.product_name || "–"}
+                          </span>
+                          <span className="text-emerald-400 text-xs font-medium ml-auto flex-shrink-0">
+                            {formatPrice(p.product_price)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="py-3 pr-4">
+                    <span className="text-white font-semibold">
+                      {formatPrice(group.totalCentimes)}
+                    </span>
                   </td>
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">
                       <div className="w-16 h-1.5 bg-pulse-border rounded-full overflow-hidden">
                         <div
                           className="h-full bg-pulse-accent rounded-full"
-                          style={{ width: `${Math.min(b.percent, 100)}%` }}
+                          style={{ width: `${Math.min(group.percent, 100)}%` }}
                         />
                       </div>
                       <span className="text-xs text-gray-400">
-                        {b.percent}%
+                        {group.percent}%
                       </span>
                     </div>
                   </td>
                   <td className="py-3 pr-4 text-gray-400">
-                    {formatDelay(b.delay)}
+                    {formatDelay(group.delay)}
                   </td>
                   <td className="py-3 text-gray-500 text-xs">
-                    {b.date.toLocaleDateString("fr-FR", {
+                    {group.date.toLocaleDateString("fr-FR", {
                       day: "numeric",
                       month: "short",
                     })}
                   </td>
                 </tr>
               ))}
-              {buyerDetails.length === 0 && (
+              {buyerGroups.length === 0 && (
                 <tr>
                   <td
                     colSpan={6}
