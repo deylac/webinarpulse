@@ -3,13 +3,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 
-export default function ConversionTab({ webinar, sessions }) {
+export default function ConversionTab({ webinar, sessions, refreshKey }) {
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadPurchases();
-  }, [webinar]);
+  }, [webinar, refreshKey]);
 
   async function loadPurchases() {
     setLoading(true);
@@ -41,9 +41,13 @@ export default function ConversionTab({ webinar, sessions }) {
   }, [purchases, uniqueViewers]);
 
   // Buyers NOT matched to a viewing session of this webinar
+  // Filtered by main product name if configured
   const unmatchedBuyers = useMemo(() => {
-    return purchases.filter((p) => p.email && !uniqueViewers.includes(p.email));
-  }, [purchases, uniqueViewers]);
+    const unmatched = purchases.filter((p) => p.email && !uniqueViewers.includes(p.email));
+    if (!webinar?.main_product_name) return unmatched;
+    const nameLC = webinar.main_product_name.toLowerCase();
+    return unmatched.filter((p) => p.product_name?.toLowerCase().includes(nameLC));
+  }, [purchases, uniqueViewers, webinar]);
 
   // Unique unmatched buyer emails
   const uniqueUnmatchedEmails = useMemo(() => {

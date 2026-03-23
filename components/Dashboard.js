@@ -27,6 +27,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
   const [timeAgo, setTimeAgo] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const lastLoadRef = useRef(0);
   const COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -226,7 +227,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
               Mis à jour {timeAgo}
             </span>
             <button
-              onClick={() => { loadSessions(); loadChapters(); }}
+              onClick={() => { loadSessions(); loadChapters(); setRefreshKey(k => k + 1); }}
               className="text-gray-600 hover:text-pulse-accent-light transition-colors p-1 rounded-lg hover:bg-pulse-accent/5"
               title="Rafraîchir"
             >
@@ -253,9 +254,10 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                       const data = await res.json();
                       const matched = data.matching?.systemeio?.matched || 0;
                       const tagBased = data.matching?.tagBased || 0;
-                      const total = matched + tagBased;
+                      const purchaseRecon = data.matching?.purchaseReconciliation || 0;
+                      const total = matched + tagBased + purchaseRecon;
                       setSyncResult(total > 0 ? `✓ ${total} identifié(s)` : '✓ À jour');
-                      if (total > 0) { loadSessions(); }
+                      if (total > 0) { loadSessions(); setRefreshKey(k => k + 1); }
                     } catch { setSyncResult('Erreur'); }
                     setSyncing(false);
                     setTimeout(() => setSyncResult(null), 4000);
@@ -377,7 +379,7 @@ export default function Dashboard({ webinar, demoMode, webinars, onBack }) {
                 </div>
               )}
               {tab === "conversion" && (
-                <ConversionTab webinar={webinar} sessions={sessions} />
+                <ConversionTab webinar={webinar} sessions={sessions} refreshKey={refreshKey} />
               )}
               {tab === "tags" && (
                 <div className="p-6">
