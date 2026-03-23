@@ -125,7 +125,15 @@ async function matchBuyerToAnonymousSessions(supabase, email) {
       .eq('email', email)
       .limit(1);
 
-    if (existingViewer?.length > 0) return; // Déjà identifié, rien à faire
+    if (existingViewer?.length > 0) {
+      // Le viewer existe déjà — s'assurer que le purchase est lié
+      await supabase
+        .from('purchases')
+        .update({ viewer_id: existingViewer[0].id })
+        .eq('email', email)
+        .is('viewer_id', null);
+      return;
+    }
 
     // Chercher l'inscription la plus récente pour cet email
     const { data: registrations } = await supabase

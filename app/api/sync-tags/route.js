@@ -95,6 +95,50 @@ async function runBatchMatching() {
   }
 }
 
+// --- Purchase reconciliation: link orphaned purchases to existing viewers ---
+
+async function runPurchaseReconciliation() {
+  try {
+    // Trouver les achats sans viewer_id qui ont un email
+    const { data: orphanPurchases } = await supabase
+      .from('purchases')
+      .select('id, email')
+      .is('viewer_id', null)
+      .is('cancelled_at', null)
+      .not('email', 'is', null);
+
+    if (!orphanPurchases?.length) return 0;
+
+    // Récupérer les emails uniques
+    const uniqueEmails = [...new Set(orphanPurchases.map(p => p.email.toLowerCase()))];
+
+    let reconciledCount = 0;
+    for (const email of uniqueEmails) {
+      // Chercher un viewer avec cet email
+      const { data: viewers } = await supabase
+        .from('viewers')
+        .select('id')
+        .eq('email', email)
+        .limit(1);
+
+      if (viewers?.length > 0) {
+        // Lier toutes les purchases orphelines de cet email
+        const { error } = await supabase
+          .from('purchases')
+          .update({ viewer_id: viewers[0].id })
+          .eq('email', email)
+          .is('viewer_id', null);
+
+        if (!error) reconciledCount++;
+      }
+    }
+    return reconciledCount;
+  } catch (e) {
+    console.error('Purchase reconciliation error:', e);
+    return 0;
+  }
+}
+
 // --- Tag-based matching: use Systeme.io contact emails to identify anonymous viewers ---
 
 async function runTagBasedMatching() {
@@ -280,6 +324,13 @@ export async function GET(request) {
     if (tagMatchCount > 0) {
       console.log(`Tag-based matching: ${tagMatchCount} viewer(s) identified`);
     }
+
+    // 0c-pre. Reconcile orphan purchases with known viewers
+    const purchaseReconCount = await runPurchaseReconciliation();
+    if (purchaseReconCount > 0) {
+      console.log(`Purchase reconciliation: ${purchaseReconCount} purchase(s) linked`);
+    }
+
     // 1. Get active tagging rules with webinar account info
     const { data: rules, error: rulesErr } = await supabase
       .from("tagging_rules")
@@ -427,7 +478,7 @@ export async function GET(request) {
     }
 
     return NextResponse.json({
-      matching: { batchRPC: matchCount, tagBased: tagMatchCount, systemeio: sioMatchCount },
+      matching: { batchRPC: matchCount, tagBased: tagMatchCount, systemeio: sioMatchCount, purchaseReconciliation: purchaseReconCount },
       tagging: { processed, errors, skipped, total: sessions.length },
       timestamp: new Date().toISOString(),
     });

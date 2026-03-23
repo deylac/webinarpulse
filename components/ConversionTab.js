@@ -40,6 +40,16 @@ export default function ConversionTab({ webinar, sessions }) {
     return purchases.filter((p) => uniqueViewers.includes(p.email));
   }, [purchases, uniqueViewers]);
 
+  // Buyers NOT matched to a viewing session of this webinar
+  const unmatchedBuyers = useMemo(() => {
+    return purchases.filter((p) => p.email && !uniqueViewers.includes(p.email));
+  }, [purchases, uniqueViewers]);
+
+  // Unique unmatched buyer emails
+  const uniqueUnmatchedEmails = useMemo(() => {
+    return [...new Set(unmatchedBuyers.map((b) => b.email))];
+  }, [unmatchedBuyers]);
+
   // Unique buyer emails
   const uniqueBuyerEmails = useMemo(() => {
     return [...new Set(buyers.map((b) => b.email))];
@@ -485,6 +495,77 @@ export default function ConversionTab({ webinar, sessions }) {
           </table>
         </div>
       </div>
+
+      {/* Unmatched Buyers */}
+      {uniqueUnmatchedEmails.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-lg">⚠️</span>
+            <h3 className="font-display text-base font-semibold text-amber-400">
+              Acheteurs non rattachés ({uniqueUnmatchedEmails.length})
+            </h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+            Ces personnes ont acheté mais n'ont pas été identifiées comme viewers de ce webinaire.
+            Leur email ne correspond à aucune session de visionnage enregistrée.
+            Elles seront automatiquement rattachées lors de la prochaine synchronisation si une session correspondante est trouvée.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-amber-500/20">
+                  <th className="pb-3 pr-4">Email</th>
+                  <th className="pb-3 pr-4">Produit</th>
+                  <th className="pb-3 pr-4">Montant</th>
+                  <th className="pb-3">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {uniqueUnmatchedEmails.map((email) => {
+                  const emailPurchases = unmatchedBuyers.filter((b) => b.email === email);
+                  const totalCentimes = emailPurchases.reduce((s, b) => s + (b.product_price || 0), 0);
+                  const firstPurchase = emailPurchases.sort(
+                    (a, b) => new Date(a.created_at) - new Date(b.created_at)
+                  )[0];
+                  return (
+                    <tr
+                      key={email}
+                      className="border-b border-pulse-border/30 hover:bg-amber-500/5 transition-colors"
+                    >
+                      <td className="py-3 pr-4">
+                        <div className="text-amber-300/90 font-medium text-[13px]">{email}</div>
+                        <div className="text-[10px] text-gray-600 mt-0.5">
+                          {emailPurchases.length} achat{emailPurchases.length > 1 ? "s" : ""}
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="flex flex-col gap-1">
+                          {emailPurchases.map((p, j) => (
+                            <span key={j} className="text-gray-400 text-xs truncate max-w-[200px]">
+                              {p.product_name || "–"}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className="text-amber-400 font-semibold">
+                          {formatPrice(totalCentimes)}
+                        </span>
+                      </td>
+                      <td className="py-3 text-gray-500 text-xs">
+                        {new Date(firstPurchase.created_at).toLocaleDateString("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
