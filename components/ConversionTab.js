@@ -28,7 +28,7 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
           .not("email", "is", null)
       ]);
       setPurchases(purchasesRes.data || []);
-      setKnownEmails((viewersRes.data || []).map(v => v.email));
+      setKnownEmails((viewersRes.data || []).map(v => v.email?.toLowerCase()));
     } catch {
       // pass
     } finally {
@@ -40,7 +40,7 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
   const uniqueViewers = useMemo(() => {
     const emails = sessions
       ?.filter((s) => s.viewer_email)
-      .map((s) => s.viewer_email);
+      .map((s) => s.viewer_email.toLowerCase());
     return [...new Set(emails)];
   }, [sessions]);
 
@@ -72,7 +72,7 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
 
   // Buyers whose email is known AND whose purchase matches the main product
   const buyers = useMemo(() => {
-    const known = purchases.filter((p) => allKnownEmails.includes(p.email));
+    const known = purchases.filter((p) => p.email && allKnownEmails.includes(p.email.toLowerCase()));
     if (!mainProductName) return known;
     return known.filter((p) => isMainProduct(p.product_name));
   }, [purchases, allKnownEmails, mainProductName]);
@@ -80,7 +80,7 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
   // Buyers NOT matched — email not in viewers table at all
   // Also filtered by main product name if configured
   const unmatchedBuyers = useMemo(() => {
-    const unmatched = purchases.filter((p) => p.email && !allKnownEmails.includes(p.email));
+    const unmatched = purchases.filter((p) => p.email && !allKnownEmails.includes(p.email.toLowerCase()));
     if (!mainProductName) return unmatched;
     return unmatched.filter((p) => isMainProduct(p.product_name));
   }, [purchases, allKnownEmails, mainProductName]);
