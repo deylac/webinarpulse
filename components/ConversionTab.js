@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 
 export default function ConversionTab({ webinar, sessions, refreshKey }) {
   const [purchases, setPurchases] = useState([]);
+  const [knownEmails, setKnownEmails] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,12 +15,20 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
   async function loadPurchases() {
     setLoading(true);
     try {
-      const { data } = await supabase
-        .from("purchases")
-        .select("*")
-        .is("cancelled_at", null)
-        .order("created_at", { ascending: false });
-      setPurchases(data || []);
+      // Load purchases and known viewer emails in parallel
+      const [purchasesRes, viewersRes] = await Promise.all([
+        supabase
+          .from("purchases")
+          .select("*")
+          .is("cancelled_at", null)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("viewers")
+          .select("email")
+          .not("email", "is", null)
+      ]);
+      setPurchases(purchasesRes.data || []);
+      setKnownEmails((viewersRes.data || []).map(v => v.email));
     } catch {
       // pass
     } finally {
@@ -35,19 +44,24 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
     return [...new Set(emails)];
   }, [sessions]);
 
-  // Buyers who are also viewers of this webinar
-  const buyers = useMemo(() => {
-    return purchases.filter((p) => uniqueViewers.includes(p.email));
-  }, [purchases, uniqueViewers]);
+  // All known emails: from sessions of this webinar + from viewers table
+  const allKnownEmails = useMemo(() => {
+    return [...new Set([...uniqueViewers, ...knownEmails])];
+  }, [uniqueViewers, knownEmails]);
 
-  // Buyers NOT matched to a viewing session of this webinar
+  // Buyers who are known to the app (have session OR exist in viewers table)
+  const buyers = useMemo(() => {
+    return purchases.filter((p) => allKnownEmails.includes(p.email));
+  }, [purchases, allKnownEmails]);
+
+  // Buyers NOT matched — email not in viewers table at all
   // Filtered by main product name if configured
   const unmatchedBuyers = useMemo(() => {
-    const unmatched = purchases.filter((p) => p.email && !uniqueViewers.includes(p.email));
+    const unmatched = purchases.filter((p) => p.email && !allKnownEmails.includes(p.email));
     if (!webinar?.main_product_name) return unmatched;
     const nameLC = webinar.main_product_name.toLowerCase();
     return unmatched.filter((p) => p.product_name?.toLowerCase().includes(nameLC));
-  }, [purchases, uniqueViewers, webinar]);
+  }, [purchases, allKnownEmails, webinar]);
 
   // Unique unmatched buyer emails
   const uniqueUnmatchedEmails = useMemo(() => {
