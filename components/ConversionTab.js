@@ -15,20 +15,29 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
   async function loadPurchases() {
     setLoading(true);
     try {
-      // Load purchases and known viewer emails in parallel
-      const [purchasesRes, viewersRes] = await Promise.all([
-        supabase
-          .from("purchases")
-          .select("*")
-          .is("cancelled_at", null)
-          .order("created_at", { ascending: false }),
-        supabase
+      // 1. Load all purchases
+      const { data: purchasesData } = await supabase
+        .from("purchases")
+        .select("*")
+        .is("cancelled_at", null)
+        .order("created_at", { ascending: false });
+      setPurchases(purchasesData || []);
+
+      // 2. Extract unique purchase emails, then check which ones exist in viewers
+      const purchaseEmails = [...new Set(
+        (purchasesData || []).map(p => p.email?.toLowerCase()).filter(Boolean)
+      )];
+
+      if (purchaseEmails.length > 0) {
+        // Query viewers only for emails that have purchases (bypasses 1000-row limit)
+        const { data: matchedViewers } = await supabase
           .from("viewers")
           .select("email")
-          .not("email", "is", null)
-      ]);
-      setPurchases(purchasesRes.data || []);
-      setKnownEmails((viewersRes.data || []).map(v => v.email?.toLowerCase()));
+          .in("email", purchaseEmails);
+        setKnownEmails((matchedViewers || []).map(v => v.email?.toLowerCase()));
+      } else {
+        setKnownEmails([]);
+      }
     } catch {
       // pass
     } finally {
@@ -118,9 +127,9 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
       const buyerSessions = sessions
         ?.filter((s) => s.viewer_email === group.email)
         .sort((a, b) => new Date(a.started_at) - new Date(b.started_at));
-      const bestPercent = Math.max(
-        ...(buyerSessions?.map((s) => s.max_video_percent || 0) || [0])
-      );
+      const bestPercent = buyerSessions?.length > 0
+        ? Math.max(...buyerSessions.map((s) => s.max_video_percent || 0))
+        : null;
       const firstSession = buyerSessions?.[0];
       const firstPurchase = group.purchases.sort(
         (a, b) => new Date(a.created_at) - new Date(b.created_at)
@@ -489,6 +498,7 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
                     </span>
                   </td>
                   <td className="py-3 pr-4">
+                    {group.percent !== null ? (
                     <div className="flex items-center gap-2">
                       <div className="w-16 h-1.5 bg-pulse-border rounded-full overflow-hidden">
                         <div
@@ -500,6 +510,9 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
                         {group.percent}%
                       </span>
                     </div>
+                    ) : (
+                      <span className="text-xs text-gray-600">–</span>
+                    )}
                   </td>
                   <td className="py-3 pr-4 text-gray-400">
                     {formatDelay(group.delay)}
