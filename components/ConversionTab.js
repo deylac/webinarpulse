@@ -23,18 +23,24 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
         .order("created_at", { ascending: false });
       setPurchases(purchasesData || []);
 
-      // 2. Extract unique purchase emails, then check which ones exist in viewers
+      // 2. Extract unique purchase emails, then check which ones exist as viewers OF THIS WEBINAR
       const purchaseEmails = [...new Set(
         (purchasesData || []).map(p => p.email?.toLowerCase()).filter(Boolean)
       )];
 
-      if (purchaseEmails.length > 0) {
-        // Query viewers only for emails that have purchases (bypasses 1000-row limit)
-        const { data: matchedViewers } = await supabase
-          .from("viewers")
-          .select("email")
-          .in("email", purchaseEmails);
-        setKnownEmails((matchedViewers || []).map(v => v.email?.toLowerCase()));
+      if (purchaseEmails.length > 0 && webinar?.id) {
+        // Query viewers scoped to this webinar via viewing_sessions (not global viewers table)
+        const { data: webinarSessions } = await supabase
+          .from("viewing_sessions")
+          .select("viewer:viewers(email)")
+          .eq("webinar_id", webinar.id);
+        const webinarViewerEmails = [...new Set(
+          (webinarSessions || [])
+            .map(s => s.viewer?.email?.toLowerCase())
+            .filter(Boolean)
+        )];
+        // Only keep emails that are both webinar viewers AND purchasers
+        setKnownEmails(webinarViewerEmails.filter(e => purchaseEmails.includes(e)));
       } else {
         setKnownEmails([]);
       }
@@ -541,6 +547,35 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
       </div>
 
       {/* Unmatched Buyers */}
+      {/* Debug Panel */}
+      <div className="mt-4 bg-pulse-deep/50 rounded-xl p-4 border border-pulse-border/50">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm">🔍</span>
+          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Diagnostic conversion</h4>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div>
+            <span className="text-gray-500">Achats chargés</span>
+            <div className="text-white font-medium">{purchases.length}</div>
+          </div>
+          <div>
+            <span className="text-gray-500">Viewers webinaire (sessions)</span>
+            <div className="text-white font-medium">{uniqueViewers.length}</div>
+          </div>
+          <div>
+            <span className="text-gray-500">Acheteurs matchés</span>
+            <div className="text-emerald-400 font-medium">{uniqueBuyerEmails.length}</div>
+          </div>
+          <div>
+            <span className="text-gray-500">Acheteurs non rattachés</span>
+            <div className="text-amber-400 font-medium">{uniqueUnmatchedEmails.length}</div>
+          </div>
+        </div>
+        <div className="mt-2 text-[10px] text-gray-600">
+          knownEmails (viewers webinaire ∩ acheteurs) : {knownEmails.length} · allKnownEmails : {allKnownEmails.length}
+        </div>
+      </div>
+
       {uniqueUnmatchedEmails.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
