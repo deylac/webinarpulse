@@ -5,7 +5,6 @@ import { supabase } from "@/lib/supabase";
 
 export default function ConversionTab({ webinar, sessions, refreshKey }) {
   const [purchases, setPurchases] = useState([]);
-  const [knownEmails, setKnownEmails] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,35 +14,13 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
   async function loadPurchases() {
     setLoading(true);
     try {
-      // 1. Load all purchases
+      // Load all purchases (non-cancelled)
       const { data: purchasesData } = await supabase
         .from("purchases")
         .select("*")
         .is("cancelled_at", null)
         .order("created_at", { ascending: false });
       setPurchases(purchasesData || []);
-
-      // 2. Extract unique purchase emails, then check which ones exist as viewers OF THIS WEBINAR
-      const purchaseEmails = [...new Set(
-        (purchasesData || []).map(p => p.email?.toLowerCase()).filter(Boolean)
-      )];
-
-      if (purchaseEmails.length > 0 && webinar?.id) {
-        // Query viewers scoped to this webinar via viewing_sessions (not global viewers table)
-        const { data: webinarSessions } = await supabase
-          .from("viewing_sessions")
-          .select("viewer:viewers(email)")
-          .eq("webinar_id", webinar.id);
-        const webinarViewerEmails = [...new Set(
-          (webinarSessions || [])
-            .map(s => s.viewer?.email?.toLowerCase())
-            .filter(Boolean)
-        )];
-        // Only keep emails that are both webinar viewers AND purchasers
-        setKnownEmails(webinarViewerEmails.filter(e => purchaseEmails.includes(e)));
-      } else {
-        setKnownEmails([]);
-      }
     } catch {
       // pass
     } finally {
@@ -59,10 +36,7 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
     return [...new Set(emails)];
   }, [sessions]);
 
-  // All known emails: from sessions of this webinar + from viewers table
-  const allKnownEmails = useMemo(() => {
-    return [...new Set([...uniqueViewers, ...knownEmails])];
-  }, [uniqueViewers, knownEmails]);
+
 
   // Helper: check if product name matches the main product (fuzzy includes)
   const mainProductName = webinar?.main_product_name;
@@ -85,25 +59,13 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
     return null;
   }
 
-  // Buyers whose email is known AND whose purchase matches the main product
+  // Buyers = viewers of THIS webinar who also have a purchase
+  // Strictly scoped: email must be in uniqueViewers (from sessions of this webinar)
   const buyers = useMemo(() => {
-    const known = purchases.filter((p) => p.email && allKnownEmails.includes(p.email.toLowerCase()));
-    if (!mainProductName) return known;
-    return known.filter((p) => isMainProduct(p.product_name));
-  }, [purchases, allKnownEmails, mainProductName]);
-
-  // Buyers NOT matched — email not in viewers table at all
-  // Also filtered by main product name if configured
-  const unmatchedBuyers = useMemo(() => {
-    const unmatched = purchases.filter((p) => p.email && !allKnownEmails.includes(p.email.toLowerCase()));
-    if (!mainProductName) return unmatched;
-    return unmatched.filter((p) => isMainProduct(p.product_name));
-  }, [purchases, allKnownEmails, mainProductName]);
-
-  // Unique unmatched buyer emails
-  const uniqueUnmatchedEmails = useMemo(() => {
-    return [...new Set(unmatchedBuyers.map((b) => b.email))];
-  }, [unmatchedBuyers]);
+    const viewerPurchases = purchases.filter((p) => p.email && uniqueViewers.includes(p.email.toLowerCase()));
+    if (!mainProductName) return viewerPurchases;
+    return viewerPurchases.filter((p) => isMainProduct(p.product_name));
+  }, [purchases, uniqueViewers, mainProductName]);
 
   // Unique buyer emails
   const uniqueBuyerEmails = useMemo(() => {
@@ -546,105 +508,32 @@ export default function ConversionTab({ webinar, sessions, refreshKey }) {
         </div>
       </div>
 
-      {/* Unmatched Buyers */}
       {/* Debug Panel */}
       <div className="mt-4 bg-pulse-deep/50 rounded-xl p-4 border border-pulse-border/50">
         <div className="flex items-center gap-2 mb-3">
           <span className="text-sm">🔍</span>
           <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Diagnostic conversion</h4>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
           <div>
-            <span className="text-gray-500">Achats chargés</span>
-            <div className="text-white font-medium">{purchases.length}</div>
-          </div>
-          <div>
-            <span className="text-gray-500">Viewers webinaire (sessions)</span>
+            <span className="text-gray-500">Viewers identifiés (ce webinaire)</span>
             <div className="text-white font-medium">{uniqueViewers.length}</div>
           </div>
           <div>
-            <span className="text-gray-500">Acheteurs matchés</span>
+            <span className="text-gray-500">Viewers qui ont acheté</span>
             <div className="text-emerald-400 font-medium">{uniqueBuyerEmails.length}</div>
           </div>
           <div>
-            <span className="text-gray-500">Acheteurs non rattachés</span>
-            <div className="text-amber-400 font-medium">{uniqueUnmatchedEmails.length}</div>
+            <span className="text-gray-500">Achats totaux en base</span>
+            <div className="text-gray-400 font-medium">{purchases.length}</div>
           </div>
         </div>
-        <div className="mt-2 text-[10px] text-gray-600">
-          knownEmails (viewers webinaire ∩ acheteurs) : {knownEmails.length} · allKnownEmails : {allKnownEmails.length}
-        </div>
+        {!mainProductName && (
+          <div className="mt-2 text-[10px] text-amber-400/70">
+            ⚠ Aucun produit principal configuré — tous les achats sont comptés. Configurez le produit dans les paramètres.
+          </div>
+        )}
       </div>
-
-      {uniqueUnmatchedEmails.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-lg">⚠️</span>
-            <h3 className="font-display text-base font-semibold text-amber-400">
-              Acheteurs non rattachés ({uniqueUnmatchedEmails.length})
-            </h3>
-          </div>
-          <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-            Ces personnes ont acheté mais n'ont pas été identifiées comme viewers de ce webinaire.
-            Leur email ne correspond à aucune session de visionnage enregistrée.
-            Elles seront automatiquement rattachées lors de la prochaine synchronisation si une session correspondante est trouvée.
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-amber-500/20">
-                  <th className="pb-3 pr-4">Email</th>
-                  <th className="pb-3 pr-4">Produit</th>
-                  <th className="pb-3 pr-4">Montant</th>
-                  <th className="pb-3">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {uniqueUnmatchedEmails.map((email) => {
-                  const emailPurchases = unmatchedBuyers.filter((b) => b.email === email);
-                  const totalCentimes = emailPurchases.reduce((s, b) => s + (b.product_price || 0), 0);
-                  const firstPurchase = emailPurchases.sort(
-                    (a, b) => new Date(a.created_at) - new Date(b.created_at)
-                  )[0];
-                  return (
-                    <tr
-                      key={email}
-                      className="border-b border-pulse-border/30 hover:bg-amber-500/5 transition-colors"
-                    >
-                      <td className="py-3 pr-4">
-                        <div className="text-amber-300/90 font-medium text-[13px]">{email}</div>
-                        <div className="text-[10px] text-gray-600 mt-0.5">
-                          {emailPurchases.length} achat{emailPurchases.length > 1 ? "s" : ""}
-                        </div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <div className="flex flex-col gap-1">
-                          {emailPurchases.map((p, j) => (
-                            <span key={j} className="text-gray-400 text-xs truncate max-w-[200px]">
-                              {p.product_name || "–"}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span className="text-amber-400 font-semibold">
-                          {formatPrice(totalCentimes)}
-                        </span>
-                      </td>
-                      <td className="py-3 text-gray-500 text-xs">
-                        {new Date(firstPurchase.created_at).toLocaleDateString("fr-FR", {
-                          day: "numeric",
-                          month: "short",
-                        })}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
